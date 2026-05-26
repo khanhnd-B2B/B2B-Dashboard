@@ -67,8 +67,8 @@ with tab1:
     
     def get_period_str(dt_series, freq):
         if freq == 'D': return dt_series.dt.strftime('%d/%m/%Y')
-        elif freq == 'W': return dt_series.dt.strftime('Tuần %W-%Y')
-        elif freq == 'M': return dt_series.dt.strftime('Tháng %m-%Y')
+        elif freq == 'W': return 'Tuần ' + dt_series.dt.strftime('%W-%Y')
+        elif freq == 'M': return 'Tháng ' + dt_series.dt.strftime('%m-%Y')
         
     df_tao['Period_Str'] = get_period_str(df_tao['ThoiGianTao'], freq)
     df_lay['Period_Str'] = get_period_str(df_lay['ThoiGianLayThanhCong'], freq)
@@ -125,9 +125,15 @@ with tab1:
             fill_value=0
         )
         pivot_detail = pivot_detail.swaplevel(0, 1, axis=1)
-        metrics_order = ['DonTao', 'DonLayThanhCong', 'CanNangLay']
+        pivot_detail = pivot_detail.rename(columns={'DonTao': 'Đơn tạo', 'DonLayThanhCong': 'Đơn lấy thành công', 'CanNangLay': 'Cân nặng (gr)'})
+        pivot_detail.index.names = ['Tên khách hàng']
+        
+        metrics_order = ['Đơn tạo', 'Đơn lấy thành công', 'Cân nặng (gr)']
         new_cols = pd.MultiIndex.from_product([sorted_periods, metrics_order])
-        pivot_detail = pivot_detail.reindex(columns=new_cols)
+        pivot_detail = pivot_detail.reindex(columns=new_cols).fillna(0)
+        
+        # Thêm hàng tổng cộng ở dưới cùng (dùng .values để tránh lỗi NaN do lệch index)
+        pivot_detail.loc['Tổng cộng', :] = pivot_detail.sum(numeric_only=True).values
         
         # Hàm format string để tránh dùng Styler khi bảng lớn
         def format_integer(val):
@@ -163,7 +169,12 @@ with tab1:
             fill_value=0
         )
         pivot_summary = pivot_summary.swaplevel(0, 1, axis=1)
-        pivot_summary = pivot_summary.reindex(columns=new_cols)
+        pivot_summary = pivot_summary.rename(columns={'DonTao': 'Đơn tạo', 'DonLayThanhCong': 'Đơn lấy thành công', 'CanNangLay': 'Cân nặng (gr)'})
+        pivot_summary.index.names = ['Vùng Giao', 'Tỉnh Giao']
+        pivot_summary = pivot_summary.reindex(columns=new_cols).fillna(0)
+        
+        # Thêm hàng tổng cộng ở dưới cùng (dùng .values để tránh lỗi NaN do lệch index)
+        pivot_summary.loc[('Tổng cộng', ''), :] = pivot_summary.sum(numeric_only=True).values
         
         pivot_summary_formatted = pivot_summary.map(format_integer)
         st.dataframe(pivot_summary_formatted, use_container_width=True)
@@ -171,7 +182,10 @@ with tab1:
         st.subheader("Biểu đồ Tổng quan Sản Lượng")
         chart_data = report1.groupby(['Period', 'Period_Str'])[['DonTao', 'DonLayThanhCong']].sum().reset_index()
         chart_data = chart_data.sort_values('Period', ascending=True)
-        fig = px.bar(chart_data, x='Period_Str', y=['DonTao', 'DonLayThanhCong'], barmode='group')
+        fig = px.bar(
+            chart_data, x='Period_Str', y=['DonTao', 'DonLayThanhCong'], barmode='group',
+            labels={'value': 'Số lượng', 'Period_Str': 'Thời gian', 'variable': 'Chỉ số', 'DonTao': 'Đơn tạo', 'DonLayThanhCong': 'Đơn lấy thành công'}
+        )
         fig.update_xaxes(categoryorder='array', categoryarray=chart_data['Period_Str'].tolist())
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -246,12 +260,14 @@ with tab2:
             fill_value=0
         )
         pivot_ontime = pivot_ontime.swaplevel(0, 1, axis=1)
-        new_cols_ontime = pd.MultiIndex.from_product([sorted_days, ['Ontime', 'TyLe_Ontime (%)']])
+        pivot_ontime = pivot_ontime.rename(columns={'Ontime': 'Đơn Ontime', 'TyLe_Ontime (%)': 'Tỷ lệ Ontime (%)'})
+        pivot_ontime.index.names = ['Tên khách hàng']
+        new_cols_ontime = pd.MultiIndex.from_product([sorted_days, ['Đơn Ontime', 'Tỷ lệ Ontime (%)']])
         pivot_ontime = pivot_ontime.reindex(columns=new_cols_ontime)
         
         def format_ontime_cols(col_name, val):
             if pd.isna(val): return ""
-            if 'TyLe' in str(col_name): return f"{val:.2f}%"
+            if 'Tỷ lệ' in str(col_name): return f"{val:.2f}%"
             return f"{val:,.0f}"
             
         pivot_ontime_formatted = pivot_ontime.copy()
@@ -263,7 +279,10 @@ with tab2:
         
         st.subheader("Tỷ lệ Ontime Xuất Hàng")
         chart_data_2 = ontime_summary.sort_values('NgayLay', ascending=True)
-        fig2 = px.line(chart_data_2, x='NgayLay', y='TyLe_Ontime (%)', color='client_name', markers=True)
+        fig2 = px.line(
+            chart_data_2, x='NgayLay', y='TyLe_Ontime (%)', color='client_name', markers=True,
+            labels={'NgayLay': 'Ngày Lấy Hàng', 'TyLe_Ontime (%)': 'Tỷ lệ Ontime (%)', 'client_name': 'Tên khách hàng'}
+        )
         fig2.update_layout(xaxis_title="Ngày Lấy Hàng")
         st.plotly_chart(fig2, use_container_width=True)
     
@@ -339,12 +358,23 @@ with tab3:
             else:
                 st.markdown(f"- ✅ **Điểm sáng:** Tuyệt vời, 100% đơn tạo ngày {latest_date.strftime('%d/%m/%Y')} đã đạt chuẩn lấy và giao trong ngày.")
 
-        st.dataframe(concung_summary.drop(columns=['NgayTao_DT']), use_container_width=True)
+        st.dataframe(concung_summary.drop(columns=['NgayTao_DT']).rename(columns={
+            'NgayTao_Str': 'Ngày Tạo',
+            'TinhGiao': 'Tỉnh Giao',
+            'TongDonTao': 'Đơn tạo',
+            'DonLayTrongNgay': 'Đơn lấy trong ngày',
+            'DonGiaoTrongNgay': 'Đơn giao trong ngày',
+            'DatYeuCau': 'Đạt yêu cầu',
+            'TyLe_DatYeuCau (%)': 'Tỷ lệ đạt (%)'
+        }), use_container_width=True)
         
         st.subheader("Đồ thị tình hình xử lý")
         chart_data_concung = concung_summary.groupby(['NgayTao_DT', 'NgayTao_Str'])[['TongDonTao', 'DonLayTrongNgay', 'DonGiaoTrongNgay']].sum().reset_index()
         chart_data_concung = chart_data_concung.sort_values('NgayTao_DT', ascending=True)
-        fig3 = px.bar(chart_data_concung, x='NgayTao_Str', y=['TongDonTao', 'DonLayTrongNgay', 'DonGiaoTrongNgay'], barmode='group', title="Tình hình Tạo - Lấy - Giao trong ngày")
+        fig3 = px.bar(
+            chart_data_concung, x='NgayTao_Str', y=['TongDonTao', 'DonLayTrongNgay', 'DonGiaoTrongNgay'], barmode='group', title="Tình hình Tạo - Lấy - Giao trong ngày",
+            labels={'NgayTao_Str': 'Ngày tạo', 'value': 'Số lượng', 'variable': 'Chỉ số', 'TongDonTao': 'Đơn tạo', 'DonLayTrongNgay': 'Đơn lấy trong ngày', 'DonGiaoTrongNgay': 'Đơn giao trong ngày'}
+        )
         fig3.update_xaxes(categoryorder='array', categoryarray=chart_data_concung['NgayTao_Str'].tolist())
         st.plotly_chart(fig3, use_container_width=True)
     else:
