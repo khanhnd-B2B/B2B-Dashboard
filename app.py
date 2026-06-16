@@ -9,6 +9,31 @@ pd.set_option("styler.render.max_elements", 5000000)
 
 st.set_page_config(page_title="B2B Delivery Dashboard", layout="wide", initial_sidebar_state="expanded")
 
+def check_password():
+    # Mật khẩu mặc định là GiaoHangNhanh2026
+    correct_password = st.secrets.get("PASSWORD", "GiaoHangNhanh2026")
+    
+    def password_entered():
+        if st.session_state["password"] == correct_password:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    if st.session_state.get("password_correct", False):
+        return True
+        
+    st.markdown("<h3 style='text-align: center; color: #ff4b4b;'>Bảo mật Hệ thống GHN B2B</h3>", unsafe_allow_html=True)
+    st.text_input("🔒 Nhập mật khẩu nội bộ GHN để truy cập Dashboard:", type="password", on_change=password_entered, key="password")
+    
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("❌ Mật khẩu không đúng! Vui lòng thử lại.")
+        
+    return False
+
+if not check_password():
+    st.stop()
+
 @st.cache_data(ttl=600)
 def load_data():
     master_file = 'master_data.csv'
