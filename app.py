@@ -11,8 +11,8 @@ pd.set_option("styler.render.max_elements", 5000000)
 
 st.set_page_config(page_title="B2B Delivery Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-CLIENT_ID = st.secrets.get("831205941676-6nhqv6fv595ma7lgog81unb3bfqm2bsc.apps.googleusercontent.com", "")
-CLIENT_SECRET = st.secrets.get("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", "")
+CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID", "")
+CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET", "")
 REDIRECT_URI = "https://b2b-dashboard-dsgkivhypxmlqtjujsic2d.streamlit.app/"
 
 def require_login():
