@@ -3,36 +3,91 @@ import pandas as pd
 import plotly.express as px
 import glob
 import os
+import requests
+import urllib.parse
 
 # Set a large max_elements just in case, but we will mostly format manually
 pd.set_option("styler.render.max_elements", 5000000)
 
 st.set_page_config(page_title="B2B Delivery Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-def check_password():
-    # Mật khẩu mặc định là GiaoHangNhanh2026
-    correct_password = st.secrets.get("PASSWORD", "GiaoHangNhanh2026")
-    
-    def password_entered():
-        if st.session_state["password"] == correct_password:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # don't store password
-        else:
-            st.session_state["password_correct"] = False
+CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID", "")
+CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET", "")
+REDIRECT_URI = "https://b2b-dashboard-dsgkivhypxmlqtjujsic2d.streamlit.app/"
 
-    if st.session_state.get("password_correct", False):
+def require_login():
+    if st.session_state.get("authenticated", False):
         return True
         
     st.markdown("<h3 style='text-align: center; color: #ff4b4b;'>Bảo mật Hệ thống GHN B2B</h3>", unsafe_allow_html=True)
-    st.text_input("🔒 Nhập mật khẩu nội bộ GHN để truy cập Dashboard:", type="password", on_change=password_entered, key="password")
     
-    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
-        st.error("❌ Mật khẩu không đúng! Vui lòng thử lại.")
-        
+    # Lấy mã phản hồi từ Google sau khi đăng nhập thành công
+    query_params = st.query_params
+    code = query_params.get("code")
+    
+    if code:
+        # Gửi mã (code) đi đổi lấy Token
+        token_url = "https://oauth2.googleapis.com/token"
+        data = {
+            "code": code,
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "redirect_uri": REDIRECT_URI,
+            "grant_type": "authorization_code"
+        }
+        res = requests.post(token_url, data=data)
+        if res.status_code == 200:
+            access_token = res.json().get("access_token")
+            # Dùng Token để gọi API lấy thông tin Profile (Email)
+            user_info_url = "https://www.googleapis.com/oauth2/v2/userinfo"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            user_res = requests.get(user_info_url, headers=headers)
+            if user_res.status_code == 200:
+                email = user_res.json().get("email", "")
+                if email.endswith("@ghn.vn"):
+                    st.session_state["authenticated"] = True
+                    st.session_state["user_email"] = email
+                    st.query_params.clear()
+                    st.rerun()
+                else:
+                    st.error(f"❌ Truy cập bị từ chối. Email '{email}' không thuộc tên miền nội bộ @ghn.vn.")
+                    st.query_params.clear()
+            else:
+                st.error("Lỗi khi lấy thông tin người dùng từ Google.")
+        else:
+            st.error("Lỗi xác thực mã từ Google. Vui lòng thử đăng nhập lại.")
+            st.query_params.clear()
+
+    # Giao diện Nút đăng nhập
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
+    params = {
+        "client_id": CLIENT_ID,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "select_account"
+    }
+    url = f"{auth_url}?{urllib.parse.urlencode(params)}"
+    
+    st.markdown(f'''
+    <div style="display: flex; justify-content: center; margin-top: 30px;">
+        <a href="{url}" target="_self" style="text-decoration: none;">
+            <div style="background-color: #4285F4; color: white; padding: 10px 20px; border-radius: 5px; font-weight: bold; font-family: sans-serif; display: flex; align-items: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="20" style="background-color: white; padding: 5px; border-radius: 3px;">
+                Đăng nhập bằng Google (Chỉ dành cho @ghn.vn)
+            </div>
+        </a>
+    </div>
+    ''', unsafe_allow_html=True)
+    
     return False
 
-if not check_password():
+if not require_login():
     st.stop()
+    
+# Hiển thị email đang đăng nhập trên Sidebar
+st.sidebar.success(f"👤 Đăng nhập bởi: {st.session_state.get('user_email', '')}")
 
 @st.cache_data(ttl=600)
 def load_data():
