@@ -11,8 +11,8 @@ pd.set_option("styler.render.max_elements", 5000000)
 
 st.set_page_config(page_title="B2B Delivery Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID", "")
-CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET", "")
+CLIENT_ID = st.secrets.get("831205941676-6nhqv6fv595ma7lgog81unb3bfqm2bsc.apps.googleusercontent.com", "")
+CLIENT_SECRET = st.secrets.get("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", "")
 REDIRECT_URI = "https://b2b-dashboard-dsgkivhypxmlqtjujsic2d.streamlit.app/"
 
 def require_login():
@@ -72,7 +72,7 @@ def require_login():
     
     st.markdown(f'''
     <div style="display: flex; justify-content: center; margin-top: 30px;">
-        <a href="{url}" target="_top" style="text-decoration: none;">
+        <a href="{url}" target="_blank" style="text-decoration: none;">
             <div style="background-color: #4285F4; color: white; padding: 10px 20px; border-radius: 5px; font-weight: bold; font-family: sans-serif; display: flex; align-items: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="20" style="background-color: white; padding: 5px; border-radius: 3px;">
                 Đăng nhập bằng Google (Chỉ dành cho @ghn.vn)
