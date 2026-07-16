@@ -50,16 +50,9 @@ def require_login():
     auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
     params = {"client_id": CLIENT_ID, "redirect_uri": REDIRECT_URI, "response_type": "code", "scope": "openid email profile", "access_type": "offline", "prompt": "select_account"}
     url = f"{auth_url}?{urllib.parse.urlencode(params)}"
-    st.markdown(f'''
-    <div style="display: flex; justify-content: center; margin-top: 30px;">
-        <a href="{url}" target="_top" style="text-decoration: none;">
-            <div style="background-color: #4285F4; color: white; padding: 10px 20px; border-radius: 5px; font-weight: bold; font-family: sans-serif; display: flex; align-items: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="20" style="background-color: white; padding: 5px; border-radius: 3px;">
-                ĐĂNG NHẬP BẰNG GOOGLE
-            </div>
-        </a>
-    </div>
-    ''', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.link_button("🔐 ĐĂNG NHẬP BẰNG GOOGLE", url, use_container_width=True)
     return False
 
 if not require_login():
