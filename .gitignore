@@ -1,0 +1,4 @@
+~$*
+*.xlsx
+__pycache__/
+b2b_network.db

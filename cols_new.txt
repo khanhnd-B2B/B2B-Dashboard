@@ -1,0 +1,1 @@
+['order_code', 'client_id', 'client_name', 'ThoiGianTao', 'ThoiGianLayThanhCong', 'ThoiGianXuatKienDauTien', 'ThoiGianGiaoThanhCong', 'TrangThaiHienTai', 'KhoLay_ID', 'KhoLay', 'KhoGiao_ID', 'KhoGiao', 'VungGiao', 'TinhGiao', 'weight', 'converted_weight', 'KL_TinhCuoc', 'length', 'width', 'height', 'SoKhoi_M3']
