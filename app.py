@@ -52,7 +52,7 @@ def require_login():
     url = f"{auth_url}?{urllib.parse.urlencode(params)}"
     st.markdown(f'''
     <div style="display: flex; justify-content: center; margin-top: 30px;">
-        <a href="{url}" target="_self" style="text-decoration: none;">
+        <a href="{url}" target="_top" style="text-decoration: none;">
             <div style="background-color: #4285F4; color: white; padding: 10px 20px; border-radius: 5px; font-weight: bold; font-family: sans-serif; display: flex; align-items: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="20" style="background-color: white; padding: 5px; border-radius: 3px;">
                 ĐĂNG NHẬP BẰNG GOOGLE
