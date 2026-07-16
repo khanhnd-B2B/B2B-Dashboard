@@ -577,27 +577,64 @@ with tab4:
     else:
         st.caption("🟡 Đang kết nối: **Local SQLite** (chưa cấu hình DATABASE_URL trong Secrets)")
 
+    # --- BẢNG 1: TỈNH THÀNH ---
     st.subheader("1. Bản Đồ Phân Bổ Tỉnh Thành")
     df_prov_db = load_db_data('provinces_mapping')
     if not df_prov_db.empty:
+        # Ẩn cột id, đổi tên cột
+        df_prov_display = df_prov_db.drop(columns=['id'], errors='ignore')
+        col_rename_prov = {'province': 'Tỉnh', 'level1_code': 'Mã chữ', 'level2_code': 'Mã số', 'fixed_route': 'Mã tuyến cố định'}
+        df_prov_display = df_prov_display.rename(columns=col_rename_prov)
+        
         if st.session_state.get("user_email") in ADMIN_EMAILS:
-            edited_prov = st.data_editor(df_prov_db, num_rows="dynamic", key="editor_prov", use_container_width=True)
+            edited_prov = st.data_editor(df_prov_display, num_rows="dynamic", key="editor_prov", use_container_width=True)
             if st.button("💾 Lưu Bản Đồ Tỉnh Thành"):
-                save_db_data(edited_prov, 'provinces_mapping')
+                # Đổi tên cột ngược lại trước khi lưu
+                col_reverse_prov = {v: k for k, v in col_rename_prov.items()}
+                save_db_data(edited_prov.rename(columns=col_reverse_prov), 'provinces_mapping')
         else:
-            st.dataframe(df_prov_db, use_container_width=True)
+            st.dataframe(df_prov_display, use_container_width=True)
     else:
-        st.info("Chưa có dữ liệu. Hãy bấm nút bên dưới để nạp dữ liệu mẫu (nếu bạn là Admin).")
+        st.info("Chưa có dữ liệu. Hãy thêm dữ liệu nếu bạn là Admin.")
             
-    st.subheader("2. Lịch Trình Xuất Bến (KTC Hưng Yên & Đài Tư)")
+    # --- BẢNG 2: LỊCH TRÌNH THEO CUNG GIỜ ---
+    st.subheader("2. Lịch Trình Xuất Bến Theo Cung Giờ")
     df_routes_db = load_db_data('routes_schedule')
     if not df_routes_db.empty:
-        if st.session_state.get("user_email") in ADMIN_EMAILS:
-            edited_routes = st.data_editor(df_routes_db, num_rows="dynamic", key="editor_routes", use_container_width=True)
-            if st.button("💾 Lưu Lịch Trình"):
-                save_db_data(edited_routes, 'routes_schedule')
+        # Tạo bảng cung giờ giống quy_hoach_b2b
+        import math
+        df_r = df_routes_db.copy()
+        df_r['hour'] = df_r['departure_time'].apply(lambda x: int(str(x).split(':')[0]) if pd.notna(x) and ':' in str(x) else -1)
+        df_r = df_r[df_r['hour'] >= 0]
+        
+        time_slots = []
+        for h in range(24):
+            h_next = (h + 1) % 24
+            slot_label = f"{h:02d}:00 - {h_next:02d}:00"
+            hy_routes = df_r[(df_r['hour'] == h) & (df_r['hub'] == 'HY')]['route_code'].unique().tolist()
+            hn_routes = df_r[(df_r['hour'] == h) & (df_r['hub'] == 'HN')]['route_code'].unique().tolist()
+            if hy_routes or hn_routes:
+                time_slots.append({
+                    'Cung Giờ': slot_label,
+                    'KTC Hưng Yên (HY01)': ', '.join(sorted(hy_routes)) if hy_routes else '-',
+                    'KTC Đài Tư (HN02)': ', '.join(sorted(hn_routes)) if hn_routes else '-'
+                })
+        
+        df_schedule = pd.DataFrame(time_slots)
+        if not df_schedule.empty:
+            st.dataframe(df_schedule, use_container_width=True, hide_index=True)
         else:
-            st.dataframe(df_routes_db, use_container_width=True)
+            st.info("Không có dữ liệu lịch trình.")
+        
+        # Expander cho bảng raw data (admin edit)
+        if st.session_state.get("user_email") in ADMIN_EMAILS:
+            with st.expander("⚙️ Chỉnh sửa dữ liệu gốc (Raw Data)"):
+                df_routes_display = df_routes_db.drop(columns=['id'], errors='ignore')
+                df_routes_display = df_routes_display.rename(columns={'route_code': 'Mã tuyến', 'hub': 'KTC', 'departure_time': 'Giờ xuất bến'})
+                edited_routes = st.data_editor(df_routes_display, num_rows="dynamic", key="editor_routes", use_container_width=True)
+                if st.button("💾 Lưu Lịch Trình"):
+                    col_reverse_routes = {'Mã tuyến': 'route_code', 'KTC': 'hub', 'Giờ xuất bến': 'departure_time'}
+                    save_db_data(edited_routes.rename(columns=col_reverse_routes), 'routes_schedule')
     else:
         st.info("Chưa có dữ liệu lịch trình.")
 # ==================== TAB 5 ====================
