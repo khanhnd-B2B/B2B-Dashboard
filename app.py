@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import os
@@ -52,7 +53,10 @@ def require_login():
     url = f"{auth_url}?{urllib.parse.urlencode(params)}"
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.link_button("🔐 ĐĂNG NHẬP BẰNG GOOGLE", url, use_container_width=True)
+        if st.button("🔐 ĐĂNG NHẬP BẰNG GOOGLE", use_container_width=True):
+            # Redirect trên cùng tab (không mở tab mới)
+            components.html(f'<script>window.top.location.href="{url}";</script>', height=0)
+            st.stop()
     return False
 
 if not require_login():
@@ -548,7 +552,11 @@ with tab4:
                 '''))
             conn.commit()
 
-    init_cloud_db()
+    try:
+        init_cloud_db()
+    except Exception as db_init_err:
+        st.warning(f"⚠️ Không thể kết nối Cloud DB (có thể project Supabase đang tạm dừng). Đang dùng Local SQLite fallback. Lỗi: {db_init_err}")
+        DATABASE_URL = ""  # Fallback về SQLite
 
     def load_db_data(table_name):
         try:
