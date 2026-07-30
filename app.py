@@ -51,17 +51,11 @@ def require_login():
     auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
     params = {"client_id": CLIENT_ID, "redirect_uri": REDIRECT_URI, "response_type": "code", "scope": "openid email profile", "access_type": "offline", "prompt": "select_account"}
     url = f"{auth_url}?{urllib.parse.urlencode(params)}"
-    # Nút login bằng HTML/JS thuần – redirect trên cùng tab, không mở tab mới
-    components.html(f'''
-    <div style="display:flex;justify-content:center;margin-top:20px;">
-        <button onclick="window.top.location.href='{url}';"
-            style="background:#4285F4;color:white;border:none;padding:12px 32px;border-radius:6px;
-            font-size:16px;font-weight:bold;cursor:pointer;font-family:sans-serif;
-            display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
-            🔐 ĐĂNG NHẬP BẰNG GOOGLE
-        </button>
-    </div>
-    ''', height=80)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.link_button("🔐 ĐĂNG NHẬP BẰNG GOOGLE", url, use_container_width=True)
+        st.caption("Sau khi đăng nhập xong, có thể đóng tab cũ.")
+        st.markdown(f"<p style='text-align:center;font-size:12px;'>Nếu nút không hoạt động, <a href='{url}' target='_blank'>bấm vào đây</a></p>", unsafe_allow_html=True)
     return False
 
 if not require_login():
