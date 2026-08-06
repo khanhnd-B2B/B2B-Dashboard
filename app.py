@@ -102,14 +102,22 @@ st.title("B2B DELIVERY REPORTING DASHBOARD")
 df = df_raw.copy()
 
 # ========== CHỌN THỜI GIAN VÀ BỘ LỌC (TOÀN CỤC) ==========
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 with col1:
     time_freq = st.selectbox("⏰ NHÓM THEO THỜI GIAN:", options=['Ngày (D)', 'Tuần (W)', 'Tháng (M)'], index=0)
 with col2:
-    kho_nhap_filter = st.selectbox("🏭 KHO NHẬP:", options=['Tất cả', 'B2B Đài Tư', 'B2B Hưng Yên'])
+    if 'NgayNhap' in df.columns and not df['NgayNhap'].dropna().empty:
+        min_date = df['NgayNhap'].dropna().min().date()
+        max_date = df['NgayNhap'].dropna().max().date()
+    else:
+        min_date = (datetime.today() - timedelta(days=30)).date()
+        max_date = datetime.today().date()
+    date_range = st.date_input("📅 TỪ NGÀY - ĐẾN NGÀY:", value=(min_date, max_date))
 with col3:
+    kho_nhap_filter = st.selectbox("🏭 KHO NHẬP:", options=['Tất cả', 'B2B Đài Tư', 'B2B Hưng Yên'])
+with col4:
     if 'Client_ID' in df.columns:
-        clients = st.multiselect("🎯 BỘ LỌC KHÁCH HÀNG (Client_ID):", options=df['Client_ID'].dropna().unique())
+        clients = st.multiselect("🎯 BỘ LỌC KHÁCH HÀNG:", options=df['Client_ID'].dropna().unique())
     else:
         clients = []
 
@@ -119,6 +127,15 @@ freq = freq_map[time_freq]
 n_periods = nperiod_map[freq]
 
 df_filtered = df.copy()
+
+if isinstance(date_range, tuple) and len(date_range) == 2:
+    start_d, end_d = date_range
+    if 'NgayNhap' in df_filtered.columns:
+        df_filtered = df_filtered[(df_filtered['NgayNhap'].dt.date >= start_d) & (df_filtered['NgayNhap'].dt.date <= end_d)]
+elif isinstance(date_range, tuple) and len(date_range) == 1:
+    start_d = date_range[0]
+    if 'NgayNhap' in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered['NgayNhap'].dt.date >= start_d]
 
 if kho_nhap_filter == 'B2B Đài Tư':
     if 'KhoNhap' in df_filtered.columns:
@@ -256,9 +273,10 @@ with tab1:
             if 'NguonNhap' in df_wh.columns:
                 pie_data = df_wh.groupby('NguonNhap').agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
                 pie_data.columns = ['Nguồn nhập', 'Số đơn', 'Tổng KG']
+                pie_data = pie_data.fillna(0)
                 if not pie_data.empty:
                     val_col = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
-                    fig_pie = px.pie(pie_data, values=val_col, names='Nguồn nhập', title="Tỷ lệ nguồn nhập", custom_data=['Số đơn', 'Tổng KG'])
+                    fig_pie = px.pie(pie_data, values=val_col, names='Nguồn nhập', title="Tỷ lệ nguồn nhập", hover_data=['Số đơn', 'Tổng KG'])
                     fig_pie.update_traces(hovertemplate="%{label}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig_pie, use_container_width=True)
         with col_chart2:
@@ -266,9 +284,10 @@ with tab1:
                 val_col_tinh = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
                 top_tinh = df_wh.groupby('TinhGiao').agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).nlargest(15, val_col_tinh).reset_index()
                 top_tinh.columns = ['Tỉnh giao', 'Số đơn', 'Tổng KG']
+                top_tinh = top_tinh.fillna(0)
                 if not top_tinh.empty:
                     y_col_tinh = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
-                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y=y_col_tinh, title="Top 15 Tỉnh giao", custom_data=['Số đơn', 'Tổng KG'])
+                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y=y_col_tinh, title="Top 15 Tỉnh giao", hover_data=['Số đơn', 'Tổng KG'])
                     fig_bar.update_traces(hovertemplate="%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig_bar, use_container_width=True)
                     
