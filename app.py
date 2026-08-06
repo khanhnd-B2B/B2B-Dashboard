@@ -172,15 +172,15 @@ with tab1:
     df_hungyen = df_filtered[df_filtered['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
 
     df_n1 = df_filtered[df_filtered['NgayNhap'].dt.date == df_filtered['NgayNhap'].max().date()] if not df_filtered.empty and 'NgayNhap' in df_filtered.columns else pd.DataFrame()
-    total_kien = len(df_n1)
+    total_kien = df_n1['MaDonGoc'].nunique() if 'MaDonGoc' in df_n1.columns else len(df_n1)
     total_kg = df_n1['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_n1.columns else 0
     
     df_daitu_n1 = df_n1[df_n1['KhoNhap'].str.contains('Đài Tư', case=False, na=False)] if 'KhoNhap' in df_n1.columns else pd.DataFrame()
-    daitu_kien = len(df_daitu_n1)
+    daitu_kien = df_daitu_n1['MaDonGoc'].nunique() if 'MaDonGoc' in df_daitu_n1.columns else len(df_daitu_n1)
     daitu_kg = df_daitu_n1['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_daitu_n1.columns else 0
     
     df_hungyen_n1 = df_n1[df_n1['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_n1.columns else pd.DataFrame()
-    hungyen_kien = len(df_hungyen_n1)
+    hungyen_kien = df_hungyen_n1['MaDonGoc'].nunique() if 'MaDonGoc' in df_hungyen_n1.columns else len(df_hungyen_n1)
     hungyen_kg = df_hungyen_n1['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_hungyen_n1.columns else 0
     
     m1, m2, m3 = st.columns(3)
@@ -198,7 +198,7 @@ with tab1:
             df_chart1['Ngày'] = df_chart1['Period_Str']
             
             if 'KhoNhap' in df_chart1.columns:
-                grouped_date_kho = df_chart1.groupby(['Period', 'Ngày', 'KhoNhap']).agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
+                grouped_date_kho = df_chart1.groupby(['Period', 'Ngày', 'KhoNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
                 grouped_date_kho['Kho'] = grouped_date_kho['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
                 grouped_date_kho = grouped_date_kho[grouped_date_kho['Kho'].isin(['Đài Tư', 'Hưng Yên'])]
                 grouped_date_kho = grouped_date_kho.groupby(['Period', 'Ngày', 'Kho']).agg({'Số_đơn': 'sum', 'Tổng_KG': 'sum'}).reset_index().sort_values('Period')
@@ -214,7 +214,7 @@ with tab1:
                     st.info("Không có dữ liệu cho biểu đồ số đơn nhập theo thời gian.")
                     
             if 'NguonNhap' in df_chart1.columns:
-                grouped_nguon = df_chart1.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+                grouped_nguon = df_chart1.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
                 if not grouped_nguon.empty:
                     y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
                     fig2 = px.bar(grouped_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title="Nguồn nhập theo thời gian", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
@@ -230,22 +230,31 @@ with tab1:
             st.info(f"Không có dữ liệu cho kho {wh_name}")
             return
             
-        total = len(df_wh)
-        df_tulay = df_wh[df_wh['NguonNhap'].str.contains('Tự kho lấy', case=False, na=False)] if 'NguonNhap' in df_wh.columns else pd.DataFrame()
-        df_khac = df_wh[df_wh['NguonNhap'].str.contains('Nhập từ kho khác', case=False, na=False)] if 'NguonNhap' in df_wh.columns else pd.DataFrame()
+        total_don = df_wh['MaDonGoc'].nunique() if 'MaDonGoc' in df_wh.columns else len(df_wh)
+        total_kg = df_wh['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_wh.columns else 0
         
-        tu_lay_count = len(df_tulay)
-        khac_count = len(df_khac)
+        df_tulay = df_wh[df_wh['NguonNhap'].str.contains('Tự kho lấy', case=False, na=False)] if 'NguonNhap' in df_wh.columns else pd.DataFrame()
+        tu_lay_don = df_tulay['MaDonGoc'].nunique() if 'MaDonGoc' in df_tulay.columns else len(df_tulay)
+        tu_lay_kg = df_tulay['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_tulay.columns else 0
+        
+        df_khac = df_wh[df_wh['NguonNhap'].str.contains('Nhập từ kho khác', case=False, na=False)] if 'NguonNhap' in df_wh.columns else pd.DataFrame()
+        khac_don = df_khac['MaDonGoc'].nunique() if 'MaDonGoc' in df_khac.columns else len(df_khac)
+        khac_kg = df_khac['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_khac.columns else 0
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("Tổng nhập", f"{total:,.0f} đơn")
-        c2.metric("Tự lấy", f"{tu_lay_count:,.0f} đơn")
-        c3.metric("Nhập từ kho khác", f"{khac_count:,.0f} đơn")
+        if metric_view == 'Số đơn':
+            c1.metric("Tổng nhập", f"{total_don:,.0f} đơn")
+            c2.metric("Tự lấy", f"{tu_lay_don:,.0f} đơn")
+            c3.metric("Nhập từ kho khác", f"{khac_don:,.0f} đơn")
+        else:
+            c1.metric("Tổng nhập", f"{total_kg:,.0f} kg")
+            c2.metric("Tự lấy", f"{tu_lay_kg:,.0f} kg")
+            c3.metric("Nhập từ kho khác", f"{khac_kg:,.0f} kg")
         
         col_chart1, col_chart2 = st.columns(2)
         with col_chart1:
             if 'NguonNhap' in df_wh.columns:
-                pie_data = df_wh.groupby('NguonNhap').agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
+                pie_data = df_wh.groupby('NguonNhap').agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
                 pie_data.columns = ['Nguồn nhập', 'Số đơn', 'Tổng KG']
                 if not pie_data.empty:
                     val_col = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
@@ -255,7 +264,7 @@ with tab1:
         with col_chart2:
             if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns:
                 val_col_tinh = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
-                top_tinh = df_wh.groupby('TinhGiao').agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).nlargest(15, val_col_tinh).reset_index()
+                top_tinh = df_wh.groupby('TinhGiao').agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).nlargest(15, val_col_tinh).reset_index()
                 top_tinh.columns = ['Tỉnh giao', 'Số đơn', 'Tổng KG']
                 if not top_tinh.empty:
                     y_col_tinh = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
@@ -266,18 +275,18 @@ with tab1:
         col_tbl1, col_tbl2 = st.columns(2)
         with col_tbl1:
             st.markdown("**Chi tiết theo Client_ID**")
-            if 'Client_ID' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaKien' in df_wh.columns:
+            if 'Client_ID' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaDonGoc' in df_wh.columns:
                 tbl_client = df_wh.groupby('Client_ID').agg(
-                    Số_đơn=('MaKien', 'count'),
+                    Số_đơn=('MaDonGoc', 'nunique'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
                 ).reset_index().sort_values('Số_đơn', ascending=False)
                 st.dataframe(tbl_client.style.format({'Tổng_KG': '{:,.0f}'}), use_container_width=True)
                 
         with col_tbl2:
             st.markdown("**Chi tiết theo Tỉnh giao**")
-            if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaKien' in df_wh.columns:
+            if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaDonGoc' in df_wh.columns:
                 tbl_tinh = df_wh.groupby('TinhGiao').agg(
-                    Số_đơn=('MaKien', 'count'),
+                    Số_đơn=('MaDonGoc', 'nunique'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
                 ).reset_index().sort_values('Số_đơn', ascending=False)
                 st.dataframe(tbl_tinh.style.format({'Tổng_KG': '{:,.0f}'}), use_container_width=True)
