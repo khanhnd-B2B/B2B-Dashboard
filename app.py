@@ -64,40 +64,51 @@ if not require_login():
 # ==================== LOAD DATA ====================
 @st.cache_data(ttl=600)
 def load_data():
-    master_file = 'master_data.csv'
-    if not os.path.exists(master_file):
-        return pd.DataFrame(), master_file
-    df = pd.read_csv(master_file)
-    dt_columns = ['ThoiGianTao', 'ThoiGianLayThanhCong', 'ThoiGianXuatKienDauTien', 'ThoiGianGiaoThanhCong', 'ThoiGianNhanKienDauTien']
-    for col in dt_columns:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce').dt.tz_localize(None)
-    weight_col = 'KL_TinhCuoc_kg'
-    if weight_col in df.columns:
-        df[weight_col] = pd.to_numeric(df[weight_col], errors='coerce').fillna(0)
-    else:
-        df[weight_col] = 0
-    return df, master_file
+    url = st.secrets.get("SHEET_URL", "")
+    df = pd.DataFrame()
+    source_used = ""
+    try:
+        if url:
+            df = pd.read_csv(url)
+            source_used = "Google Sheets"
+    except Exception:
+        pass
+        
+    if df.empty:
+        local_file = 'Data B2B mới.xlsx'
+        if os.path.exists(local_file):
+            df = pd.read_excel(local_file)
+            source_used = local_file
+        else:
+            return pd.DataFrame(), "Không tìm thấy dữ liệu"
+            
+    if not df.empty:
+        dt_columns = ['ThoiGianNhap', 'InsideThoiGianGanNhat', 'NgayNhap']
+        for col in dt_columns:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce').dt.tz_localize(None)
+    return df, source_used
 
 df_raw, master_file_path = load_data()
 if df_raw.empty:
-    st.error(f"Không tìm thấy file {master_file_path}.")
+    st.error(f"Không tìm thấy dữ liệu nguồn.")
     st.stop()
 
 st.title("B2B DELIVERY REPORTING DASHBOARD")
 
-# Lọc bỏ ngày hiện tại (chỉ lấy đến hôm qua)
-today = datetime.now().date()
-# Tạo một DataFrame mới chỉ chứa dữ liệu đến D-1 dựa trên ThoiGianTao và ThoiGianLayThanhCong
-# Ta sẽ không xóa hẳn data, nhưng khi tính toán báo cáo sẽ chỉ lấy các sự kiện xảy ra < today
 df = df_raw.copy()
 
 # ========== CHỌN THỜI GIAN VÀ BỘ LỌC (TOÀN CỤC) ==========
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     time_freq = st.selectbox("⏰ NHÓM THEO THỜI GIAN:", options=['Ngày (D)', 'Tuần (W)', 'Tháng (M)'], index=0)
 with col2:
-    clients = st.multiselect("🎯 BỘ LỌC KHÁCH HÀNG (TOÀN CỤC):", options=df['client_name'].dropna().unique())
+    kho_nhap_filter = st.selectbox("🏭 KHO NHẬP:", options=['Tất cả', 'B2B Đài Tư', 'B2B Hưng Yên'])
+with col3:
+    if 'Client_ID' in df.columns:
+        clients = st.multiselect("🎯 BỘ LỌC KHÁCH HÀNG (Client_ID):", options=df['Client_ID'].dropna().unique())
+    else:
+        clients = []
 
 freq_map = {'Ngày (D)': 'D', 'Tuần (W)': 'W', 'Tháng (M)': 'M'}
 nperiod_map = {'D': 30, 'W': 6, 'M': 3}
@@ -105,10 +116,16 @@ freq = freq_map[time_freq]
 n_periods = nperiod_map[freq]
 
 df_filtered = df.copy()
-if clients:
-    df_filtered = df_filtered[df_filtered['client_name'].isin(clients)]
 
-WEIGHT_COL = 'KL_TinhCuoc_kg'
+if kho_nhap_filter == 'B2B Đài Tư':
+    if 'KhoNhap' in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered['KhoNhap'].str.contains('Đài Tư', case=False, na=False)]
+elif kho_nhap_filter == 'B2B Hưng Yên':
+    if 'KhoNhap' in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)]
+
+if clients and 'Client_ID' in df_filtered.columns:
+    df_filtered = df_filtered[df_filtered['Client_ID'].isin(clients)]
 
 def get_period(dt_series, f):
     if f == 'D': return dt_series.dt.to_period('D').dt.start_time
@@ -120,10 +137,7 @@ def get_period_str(dt_series, f):
     elif f == 'W': return 'W' + dt_series.dt.strftime('%W-%Y')
     elif f == 'M': return 'T' + dt_series.dt.strftime('%m-%Y')
 
-# Hàm hiển thị DataFrame dùng Styler để format số nguyên, giữ nguyên type số để sort
 def display_dataframe(df_to_show):
-    # Định dạng các cột số theo format {:,.0f} (vd 1,234)
-    # Tách dòng TỔNG CỘNG ra một bảng riêng để không bị lẫn khi sort
     if isinstance(df_to_show.index, pd.MultiIndex):
         total_idx = ('TỔNG CỘNG', '')
     else:
@@ -141,264 +155,225 @@ def display_dataframe(df_to_show):
     else:
         st.dataframe(df_to_show.style.format("{:,.0f}", na_rep=""), use_container_width=True)
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["1. ĐƠN LẤY & VÙNG GIAO", "2. ONTIME XUẤT HÀNG", "3. GIAO TRONG NGÀY (CONCUNG)", "4. QUẢN LÝ NETWORK (DB)", "5. PHÂN TÍCH SORT CODE"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["1. SẢN LƯỢNG NHẬP KHO", "2. ONTIME XUẤT HÀNG", "3. GIAO TRONG NGÀY (CONCUNG)", "4. QUẢN LÝ NETWORK (DB)", "5. PHÂN TÍCH SORT CODE"])
 
 # ==================== TAB 1 ====================
 with tab1:
-    st.header("BÁO CÁO SẢN LƯỢNG (ĐƠN TẠO & LẤY THÀNH CÔNG)")
-
-    df_tao_all = df_filtered.dropna(subset=['ThoiGianTao']).copy()
-    df_lay_all = df_filtered.dropna(subset=['ThoiGianLayThanhCong']).copy()
-
-    # Lọc bỏ ngày N (hôm nay) cho đơn lấy và tạo
-    df_tao_all = df_tao_all[df_tao_all['ThoiGianTao'].dt.date < today]
-    df_lay_all = df_lay_all[df_lay_all['ThoiGianLayThanhCong'].dt.date < today]
-
-    # Flag đơn nhảy BC: KhoGiao không chứa từ "Kho"
-    if 'KhoGiao' in df_tao_all.columns:
-        df_tao_all['IsBC'] = ~df_tao_all['KhoGiao'].fillna('').str.contains('Kho', case=False)
-    else:
-        df_tao_all['IsBC'] = False
-    if 'KhoGiao' in df_lay_all.columns:
-        df_lay_all['IsBC'] = ~df_lay_all['KhoGiao'].fillna('').str.contains('Kho', case=False)
-    else:
-        df_lay_all['IsBC'] = False
-
-    # Tính Period
-    df_tao_all['Period'] = get_period(df_tao_all['ThoiGianTao'], freq)
-    df_lay_all['Period'] = get_period(df_lay_all['ThoiGianLayThanhCong'], freq)
-    df_tao_all['Period_Str'] = get_period_str(df_tao_all['ThoiGianTao'], freq)
-    df_lay_all['Period_Str'] = get_period_str(df_lay_all['ThoiGianLayThanhCong'], freq)
-
-    agg_tao = df_tao_all.groupby(['Period', 'Period_Str', 'client_name', 'VungGiao', 'TinhGiao']).agg(
-        DonTao=('order_code', 'count'), CanNang=(WEIGHT_COL, 'sum'), DonBC=('IsBC', 'sum')
-    ).reset_index()
-
-    agg_lay = df_lay_all.groupby(['Period', 'Period_Str', 'client_name', 'VungGiao', 'TinhGiao']).agg(
-        DonLayTC=('order_code', 'count'), CanNangLay=(WEIGHT_COL, 'sum')
-    ).reset_index()
-
-    report1 = pd.merge(agg_tao, agg_lay, on=['Period', 'Period_Str', 'client_name', 'VungGiao', 'TinhGiao'], how='outer').fillna(0)
-
-    # Giới hạn số kỳ
-    all_periods = report1[['Period', 'Period_Str']].drop_duplicates().sort_values('Period', ascending=False)
-    keep_periods = all_periods.head(n_periods)['Period'].tolist()
-    report1 = report1[report1['Period'].isin(keep_periods)]
-    sorted_periods = report1[['Period', 'Period_Str']].drop_duplicates().sort_values('Period', ascending=False)['Period_Str'].tolist()
-
-    if not report1.empty and len(sorted_periods) > 0:
-        latest_p = sorted_periods[0]
-        prev_p = sorted_periods[1] if len(sorted_periods) > 1 else None
-        latest_data = report1[report1['Period_Str'] == latest_p]
-
-        # ---- NHẬN XÉT ----
-        st.info(f"💡 **NHẬN XÉT ({time_freq}):**")
-
-        latest_tao = latest_data['DonTao'].sum()
-        latest_lay = latest_data['DonLayTC'].sum()
-        if prev_p:
-            prev_tao = report1[report1['Period_Str'] == prev_p]['DonTao'].sum()
-            diff = latest_tao - prev_tao
-            trend = "tăng" if diff >= 0 else "giảm"
-            st.markdown(f"- 📈 **Biến động:** Đơn tạo {latest_p} đạt **{latest_tao:,.0f}** đơn, **{trend} {abs(diff):,.0f}** so với {prev_p}.")
-
-        don_bc = latest_data['DonBC'].sum()
-        if don_bc > 0:
-            st.markdown(f"- ⚠️ **Đơn nhảy BC:** Có **{don_bc:,.0f}** đơn đang nhảy về BC.")
-        else:
-            st.markdown(f"- ✅ Không có đơn nào nhảy về BC.")
-
-        top_tinh = latest_data.groupby('TinhGiao')['CanNang'].sum().nlargest(5)
-        if not top_tinh.empty:
-            top_str = ", ".join([f"**{t}** ({v:,.1f} kg)" for t, v in top_tinh.items()])
-            st.markdown(f"- 📦 **TOP 5 TỈNH KHỐI LƯỢNG LỚN NHẤT:** {top_str}")
-
-        if freq in ('W', 'M'):
-            top5_kh = latest_data.groupby('client_name')['DonTao'].sum().nlargest(5)
-            if not top5_kh.empty:
-                top5_str = ", ".join([f"**{k}** ({v:,.0f} đơn)" for k, v in top5_kh.items()])
-                st.markdown(f"- 🏆 **TOP 5 KH VOL LỚN NHẤT:** {top5_str}")
-            kh_bc = latest_data.groupby('client_name')['DonBC'].sum().nlargest(1)
-            if not kh_bc.empty and kh_bc.values[0] > 0:
-                st.markdown(f"- ⚠️ **KH NHẢY BC NHIỀU NHẤT:** **{kh_bc.index[0]}** với {kh_bc.values[0]:,.0f} đơn.")
-
-        not_lay = latest_tao - latest_lay
-        if not_lay > 0:
-            st.markdown(f"- ⚠️ **Đang làm chưa tốt:** Có **{not_lay:,.0f}** đơn tạo nhưng chưa lấy thành công.")
-
-        client_rates = latest_data.groupby('client_name').agg(DonTao=('DonTao', 'sum'), DonLayTC=('DonLayTC', 'sum'))
-        client_rates['Rate'] = (client_rates['DonLayTC'] / client_rates['DonTao'] * 100).fillna(0)
-        low_rate = client_rates[(client_rates['DonTao'] > 0) & (client_rates['Rate'] < 80)].sort_values('Rate')
-        if not low_rate.empty:
-            st.markdown(f"- 🚨 **CẢNH BÁO:** Các KH có tỷ lệ Lấy thành công thấp (<80%):")
-            for kh, row in low_rate.iterrows():
-                st.markdown(f"  - **{kh}**: {row['Rate']:.1f}% ({row['DonLayTC']:,.0f}/{row['DonTao']:,.0f} đơn)")
-
-        # ---- BẢNG KHÁCH HÀNG ----
-        st.subheader("BẢNG CHI TIẾT SẢN LƯỢNG THEO KHÁCH HÀNG")
-        metrics = ['Đơn tạo', 'Đơn lấy TC', 'Cân nặng (kg)']
-        pivot_detail = report1.pivot_table(index=['client_name'], columns='Period_Str',
-            values=['DonTao', 'DonLayTC', 'CanNang'], aggfunc='sum', fill_value=0)
-        pivot_detail = pivot_detail.swaplevel(0, 1, axis=1)
-        pivot_detail = pivot_detail.rename(columns={'DonTao': 'Đơn tạo', 'DonLayTC': 'Đơn lấy TC', 'CanNang': 'Cân nặng (kg)'})
-        pivot_detail.index.names = ['TÊN KHÁCH HÀNG']
-        new_cols = pd.MultiIndex.from_product([sorted_periods, metrics])
-        pivot_detail = pivot_detail.reindex(columns=new_cols).fillna(0)
+    st.header("BÁO CÁO SẢN LƯỢNG NHẬP KHO")
+    
+    total_kien = len(df_filtered)
+    total_kg = df_filtered['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_filtered.columns else 0
+    
+    df_daitu = df_filtered[df_filtered['KhoNhap'].str.contains('Đài Tư', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
+    daitu_kien = len(df_daitu)
+    daitu_kg = df_daitu['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_daitu.columns else 0
+    
+    df_hungyen = df_filtered[df_filtered['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
+    hungyen_kien = len(df_hungyen)
+    hungyen_kg = df_hungyen['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_hungyen.columns else 0
+    
+    m1, m2, m3 = st.columns(3)
+    m1.metric("🔢 TỔNG KIỆN 2 KHO", f"{total_kien:,.0f} kiện", f"{total_kg:,.1f} KG")
+    m2.metric("🏭 B2B ĐÀI TƯ", f"{daitu_kien:,.0f} kiện", f"{daitu_kg:,.1f} KG")
+    m3.metric("🏭 B2B HƯNG YÊN", f"{hungyen_kien:,.0f} kiện", f"{hungyen_kg:,.1f} KG")
+    
+    sub1, sub2, sub3 = st.tabs(['📊 Tổng hợp', '🏭 B2B Đài Tư', '🏭 B2B Hưng Yên'])
+    
+    with sub1:
+        if 'NgayNhap' in df_filtered.columns:
+            df_chart1 = df_filtered.copy()
+            df_chart1['Ngày'] = df_chart1['NgayNhap'].dt.date
+            
+            if 'KhoNhap' in df_chart1.columns:
+                grouped_date_kho = df_chart1.groupby(['Ngày', 'KhoNhap']).size().reset_index(name='Số kiện')
+                grouped_date_kho['Kho'] = grouped_date_kho['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
+                grouped_date_kho = grouped_date_kho[grouped_date_kho['Kho'].isin(['Đài Tư', 'Hưng Yên'])]
+                grouped_date_kho = grouped_date_kho.groupby(['Ngày', 'Kho'])['Số kiện'].sum().reset_index()
+                
+                if not grouped_date_kho.empty:
+                    fig1 = px.line(grouped_date_kho, x='Ngày', y='Số kiện', color='Kho', markers=True, title="Số kiện nhập theo ngày")
+                    st.plotly_chart(fig1, use_container_width=True)
+                else:
+                    st.info("Không có dữ liệu cho biểu đồ số kiện nhập theo ngày.")
+                    
+            if 'NguonNhap' in df_chart1.columns:
+                grouped_nguon = df_chart1.groupby(['Ngày', 'NguonNhap']).size().reset_index(name='Số kiện')
+                if not grouped_nguon.empty:
+                    fig2 = px.bar(grouped_nguon, x='Ngày', y='Số kiện', color='NguonNhap', barmode='stack', title="Nguồn nhập theo ngày (Tự lấy vs Nhập từ kho khác)")
+                    st.plotly_chart(fig2, use_container_width=True)
+                else:
+                    st.info("Không có dữ liệu cho biểu đồ nguồn nhập.")
+                    
+    def render_warehouse_tab(df_wh, wh_name):
+        st.subheader(f"CHI TIẾT KHO {wh_name}")
+        if df_wh.empty:
+            st.info(f"Không có dữ liệu cho kho {wh_name}")
+            return
+            
+        total = len(df_wh)
+        df_tulay = df_wh[df_wh['NguonNhap'].str.contains('Tự kho lấy', case=False, na=False)] if 'NguonNhap' in df_wh.columns else pd.DataFrame()
+        df_khac = df_wh[df_wh['NguonNhap'].str.contains('Nhập từ kho khác', case=False, na=False)] if 'NguonNhap' in df_wh.columns else pd.DataFrame()
         
-        # Ẩn KH có 0 đơn toàn bộ kỳ
-        zero_mask = (pivot_detail == 0).all(axis=1)
-        pivot_detail = pivot_detail[~zero_mask]
+        tu_lay_count = len(df_tulay)
+        khac_count = len(df_khac)
         
-        pivot_detail.loc['TỔNG CỘNG', :] = pivot_detail.sum(numeric_only=True).values
-        display_dataframe(pivot_detail)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Tổng nhập", f"{total:,.0f} kiện")
+        c2.metric("Tự lấy", f"{tu_lay_count:,.0f} kiện")
+        c3.metric("Nhập từ kho khác", f"{khac_count:,.0f} kiện")
+        
+        col_chart1, col_chart2 = st.columns(2)
+        with col_chart1:
+            if 'NguonNhap' in df_wh.columns:
+                pie_data = df_wh['NguonNhap'].value_counts().reset_index()
+                pie_data.columns = ['Nguồn nhập', 'Số kiện']
+                if not pie_data.empty:
+                    fig_pie = px.pie(pie_data, values='Số kiện', names='Nguồn nhập', title="Tỷ lệ nguồn nhập")
+                    st.plotly_chart(fig_pie, use_container_width=True)
+        with col_chart2:
+            if 'TinhGiao' in df_wh.columns:
+                top_tinh = df_wh['TinhGiao'].value_counts().nlargest(15).reset_index()
+                top_tinh.columns = ['Tỉnh giao', 'Số kiện']
+                if not top_tinh.empty:
+                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y='Số kiện', title="Top 15 Tỉnh giao")
+                    st.plotly_chart(fig_bar, use_container_width=True)
+                    
+        col_tbl1, col_tbl2 = st.columns(2)
+        with col_tbl1:
+            st.markdown("**Chi tiết theo Client_ID**")
+            if 'Client_ID' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaKien' in df_wh.columns:
+                tbl_client = df_wh.groupby('Client_ID').agg(
+                    Số_kiện=('MaKien', 'count'),
+                    Tổng_KG=('KhoiLuongKG', 'sum')
+                ).reset_index().sort_values('Số_kiện', ascending=False)
+                st.dataframe(tbl_client.style.format({'Tổng_KG': '{:,.1f}'}), use_container_width=True)
+                
+        with col_tbl2:
+            st.markdown("**Chi tiết theo Tỉnh giao**")
+            if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaKien' in df_wh.columns:
+                tbl_tinh = df_wh.groupby('TinhGiao').agg(
+                    Số_kiện=('MaKien', 'count'),
+                    Tổng_KG=('KhoiLuongKG', 'sum')
+                ).reset_index().sort_values('Số_kiện', ascending=False)
+                st.dataframe(tbl_tinh.style.format({'Tổng_KG': '{:,.1f}'}), use_container_width=True)
 
-        # ---- BẢNG VÙNG GIAO ----
-        st.subheader("BẢNG TỔNG HỢP THEO VÙNG / TỈNH GIAO")
-        pivot_vung = report1.pivot_table(index=['VungGiao', 'TinhGiao'], columns='Period_Str',
-            values=['DonTao', 'DonLayTC', 'CanNang'], aggfunc='sum', fill_value=0)
-        pivot_vung = pivot_vung.swaplevel(0, 1, axis=1)
-        pivot_vung = pivot_vung.rename(columns={'DonTao': 'Đơn tạo', 'DonLayTC': 'Đơn lấy TC', 'CanNang': 'Cân nặng (kg)'})
-        pivot_vung.index.names = ['VÙNG GIAO', 'TỈNH GIAO']
-        pivot_vung = pivot_vung.reindex(columns=new_cols).fillna(0)
-        pivot_vung.loc[('TỔNG CỘNG', ''), :] = pivot_vung.sum(numeric_only=True).values
-        display_dataframe(pivot_vung)
-
-        # ---- BIỂU ĐỒ ----
-        st.subheader("BIỂU ĐỒ TỔNG QUAN SẢN LƯỢNG")
-        chart_data = report1.groupby(['Period', 'Period_Str'])[['DonTao', 'DonLayTC']].sum().reset_index()
-        chart_data = chart_data.sort_values('Period', ascending=True)
-        fig = px.bar(chart_data, x='Period_Str', y=['DonTao', 'DonLayTC'], barmode='group',
-            labels={'value': 'Số lượng', 'Period_Str': 'Thời gian', 'variable': 'Chỉ số', 'DonTao': 'Đơn tạo', 'DonLayTC': 'Đơn lấy TC'})
-        fig.update_xaxes(categoryorder='array', categoryarray=chart_data['Period_Str'].tolist())
-        st.plotly_chart(fig, use_container_width=True)
-
-        with st.expander("XEM CHI TIẾT CÁC ĐƠN NHẢY VỀ BƯU CỤC (BC)"):
-            df_bc = df_tao_all[df_tao_all['IsBC']]
-            if not df_bc.empty:
-                cols_show = ['order_code', 'client_name', 'KhoLay', 'TinhGiao', WEIGHT_COL, 'ThoiGianTao']
-                cols_show = [c for c in cols_show if c in df_bc.columns]
-                st.dataframe(df_bc[cols_show].sort_values('ThoiGianTao', ascending=False))
-            else:
-                st.info("Không có đơn nhảy về BC.")
-    else:
-        st.info("Không có dữ liệu")
+    with sub2:
+        render_warehouse_tab(df_daitu, "B2B ĐÀI TƯ")
+        
+    with sub3:
+        render_warehouse_tab(df_hungyen, "B2B HƯNG YÊN")
 
 # ==================== TAB 2 ====================
 with tab2:
     st.header("BÁO CÁO ONTIME XUẤT HÀNG")
-    st.markdown("Quy định: \n- Lấy thành công **trước 20h ngày N** → phải xuất kiện **trước 6h sáng ngày N+1**.\n- Lấy thành công **sau 20h ngày N** → phải xuất kiện **trước 20h ngày N+1**.\n*(Loại trừ đơn giao tại kho B2B Đài Tư)*")
-
-    df_ontime = df_filtered.dropna(subset=['ThoiGianLayThanhCong']).copy()
-
-    # Lọc bỏ ngày N (hôm nay)
-    df_ontime = df_ontime[df_ontime['ThoiGianLayThanhCong'].dt.date < today]
-
-    # Loại trừ đơn có KhoGiao chứa "Đài Tư"
-    if 'KhoGiao' in df_ontime.columns:
-        df_ontime = df_ontime[~df_ontime['KhoGiao'].fillna('').str.contains('Đài Tư', case=False)]
-
-    df_ontime['NgayLay'] = df_ontime['ThoiGianLayThanhCong'].dt.date
-    df_ontime['GioLay'] = df_ontime['ThoiGianLayThanhCong'].dt.hour
     
     import numpy as np
-    base_date = pd.to_datetime(df_ontime['NgayLay'])
-    df_ontime['DeadlineXuat'] = np.where(
-        df_ontime['GioLay'] < 20,
-        base_date + pd.Timedelta(days=1, hours=6),
-        base_date + pd.Timedelta(days=1, hours=20)
-    )
-
-    def check_ontime(row):
-        if pd.isna(row['ThoiGianXuatKienDauTien']): return False
-        return row['ThoiGianXuatKienDauTien'] <= row['DeadlineXuat']
-
-    df_ontime['Is_Ontime'] = df_ontime.apply(check_ontime, axis=1)
-
-    # Tính Period cho Ontime
-    df_ontime['Period'] = get_period(df_ontime['ThoiGianLayThanhCong'], freq)
-    df_ontime['Period_Str'] = get_period_str(df_ontime['ThoiGianLayThanhCong'], freq)
-
-    ontime_summary = df_ontime.groupby(['Period', 'Period_Str', 'client_name']).agg(
-        TongDon=('order_code', 'count'),
-        Ontime=('Is_Ontime', 'sum')
-    ).reset_index()
-    ontime_summary['TyLe_Ontime (%)'] = (ontime_summary['Ontime'] / ontime_summary['TongDon'] * 100).round(2)
-
-    # Giới hạn số kỳ
-    all_p_ontime = ontime_summary[['Period', 'Period_Str']].drop_duplicates().sort_values('Period', ascending=False)
-    keep_p_ontime = all_p_ontime.head(n_periods)['Period'].tolist()
-    ontime_summary = ontime_summary[ontime_summary['Period'].isin(keep_p_ontime)]
-    sorted_p_ontime = ontime_summary[['Period', 'Period_Str']].drop_duplicates().sort_values('Period', ascending=False)['Period_Str'].tolist()
-
-    if not ontime_summary.empty:
-        latest_p_ot = sorted_p_ontime[0] if sorted_p_ontime else None
-        prev_p_ot = sorted_p_ontime[1] if len(sorted_p_ontime) > 1 else None
-
-        if latest_p_ot:
-            latest_ot_data = ontime_summary[ontime_summary['Period_Str'] == latest_p_ot]
-            latest_pct = (latest_ot_data['Ontime'].sum() / latest_ot_data['TongDon'].sum() * 100) if latest_ot_data['TongDon'].sum() > 0 else 0
-
-            prev_pct = None
-            if prev_p_ot:
-                prev_ot_data = ontime_summary[ontime_summary['Period_Str'] == prev_p_ot]
-                prev_pct = (prev_ot_data['Ontime'].sum() / prev_ot_data['TongDon'].sum() * 100) if prev_ot_data['TongDon'].sum() > 0 else 0
-
-            st.info("💡 **NHẬN XÉT TÌNH HÌNH ONTIME:**")
-            comp = ""
-            if prev_pct is not None:
-                diff_pct = latest_pct - prev_pct
-                comp = f"(**{'tăng' if diff_pct >= 0 else 'giảm'} {abs(diff_pct):.1f}%** so với kỳ trước)"
-            st.markdown(f"- 📈 **Biến động:** Tỷ lệ Ontime kỳ {latest_p_ot} đạt **{latest_pct:.1f}%** {comp}")
-
-            if not latest_ot_data.empty:
-                worst_client = latest_ot_data.sort_values('TyLe_Ontime (%)').iloc[0]
-                not_ontime = worst_client['TongDon'] - worst_client['Ontime']
-                if not_ontime > 0:
-                    st.markdown(f"- ⚠️ **Đang làm chưa tốt:** KH **{worst_client['client_name']}** Ontime thấp nhất (**{worst_client['TyLe_Ontime (%)']}%**) với {not_ontime:,.0f} đơn trễ.")
-
-        # Pivot với 3 cột: Tổng đơn, Đơn Ontime, Tỷ lệ
-        pivot_ontime = ontime_summary.pivot_table(
-            index='client_name', columns='Period_Str',
-            values=['TongDon', 'Ontime', 'TyLe_Ontime (%)'],
-            aggfunc='sum', fill_value=0)
-        pivot_ontime = pivot_ontime.swaplevel(0, 1, axis=1)
-        pivot_ontime = pivot_ontime.rename(columns={'TongDon': 'Tổng đơn', 'Ontime': 'Đơn Ontime', 'TyLe_Ontime (%)': 'Tỷ lệ Ontime (%)'})
-        pivot_ontime.index.names = ['TÊN KHÁCH HÀNG']
-        new_cols_ot = pd.MultiIndex.from_product([sorted_p_ontime, ['Tổng đơn', 'Đơn Ontime', 'Tỷ lệ Ontime (%)']])
-        pivot_ontime = pivot_ontime.reindex(columns=new_cols_ot).fillna(0)
-
-        zero_mask_ot = (pivot_ontime.xs('Tổng đơn', level=1, axis=1) == 0).all(axis=1)
-        pivot_ontime = pivot_ontime[~zero_mask_ot]
-
-        total_row = pivot_ontime.sum(numeric_only=True)
-        for p in sorted_p_ontime:
-            t_don = total_row[(p, 'Tổng đơn')]
-            t_ot = total_row[(p, 'Đơn Ontime')]
-            total_row[(p, 'Tỷ lệ Ontime (%)')] = (t_ot / t_don * 100) if t_don > 0 else 0
-        pivot_ontime.loc['TỔNG CỘNG', :] = total_row
-
-        st.subheader("BẢNG CHI TIẾT SỐ ĐƠN VÀ TỶ LỆ ONTIME (%)")
-        df_total_ot = pivot_ontime.loc[['TỔNG CỘNG']]
-        df_main_ot = pivot_ontime.drop(index='TỔNG CỘNG')
+    df_ot = df_filtered.copy()
+    if 'NgayNhap' in df_ot.columns:
+        today_date = pd.to_datetime('today').normalize()
+        df_ot = df_ot[pd.to_datetime(df_ot['NgayNhap']).dt.normalize() < today_date]
         
-        st.markdown("📊 **TỔNG CỘNG** *(Cố định)*")
-        st.dataframe(df_total_ot.style.format(na_rep="", formatter="{:,.0f}", subset=pd.IndexSlice[:, (sorted_p_ontime, ['Tổng đơn', 'Đơn Ontime'])]).format(na_rep="", formatter="{:,.2f}%", subset=pd.IndexSlice[:, (sorted_p_ontime, ['Tỷ lệ Ontime (%)'])]), use_container_width=True)
-        st.markdown("📝 **CHI TIẾT** *(Bấm vào tiêu đề cột để sắp xếp)*")
-        st.dataframe(df_main_ot.style.format(na_rep="", formatter="{:,.0f}", subset=pd.IndexSlice[:, (sorted_p_ontime, ['Tổng đơn', 'Đơn Ontime'])]).format(na_rep="", formatter="{:,.2f}%", subset=pd.IndexSlice[:, (sorted_p_ontime, ['Tỷ lệ Ontime (%)'])]), use_container_width=True)
+    if 'KhoGiao' in df_ot.columns:
+        df_ot = df_ot[~df_ot['KhoGiao'].fillna('').str.contains('Đài Tư', case=False)]
+        
+    if not df_ot.empty and 'ThoiGianNhap' in df_ot.columns and 'KhoNhap_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns and 'TrangThaiViTriInside' in df_ot.columns and 'InsideThaoTacGanNhat' in df_ot.columns and 'InsideThoiGianGanNhat' in df_ot.columns:
+        df_ot['GioNhap'] = df_ot['ThoiGianNhap'].dt.hour
+        base_date = pd.to_datetime(df_ot['NgayNhap']).dt.normalize()
+        
+        df_ot['DeadlineXuat'] = np.where(
+            df_ot['GioNhap'] < 20,
+            base_date + pd.Timedelta(days=1, hours=6),
+            base_date + pd.Timedelta(days=1, hours=20)
+        )
+        
+        is_exported = (df_ot['KhoHienTai_ID'] != df_ot['KhoNhap_ID']) | (df_ot['TrangThaiViTriInside'] == 'Đã xuất khỏi kho thao tác gần nhất')
+        df_ot['DaXuat'] = is_exported
+        
+        export_time = np.where(
+            df_ot['InsideThaoTacGanNhat'] == 'export',
+            df_ot['InsideThoiGianGanNhat'],
+            df_ot['InsideThoiGianGanNhat']
+        )
+        df_ot['ThoiGianXuat'] = pd.to_datetime(export_time)
+        
+        df_ot['Ontime'] = df_ot['DaXuat'] & (df_ot['ThoiGianXuat'] <= df_ot['DeadlineXuat'])
+        
+        total_ot = len(df_ot)
+        ontime_count = df_ot['Ontime'].sum()
+        ontime_rate = (ontime_count / total_ot * 100) if total_ot > 0 else 0
+        
+        df_ot_dt = df_ot[df_ot['KhoNhap'].str.contains('Đài Tư', case=False, na=False)] if 'KhoNhap' in df_ot.columns else pd.DataFrame()
+        dt_ot = len(df_ot_dt)
+        dt_ontime_count = df_ot_dt['Ontime'].sum() if dt_ot > 0 else 0
+        dt_rate = (dt_ontime_count / dt_ot * 100) if dt_ot > 0 else 0
+        
+        df_ot_hy = df_ot[df_ot['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_ot.columns else pd.DataFrame()
+        hy_ot = len(df_ot_hy)
+        hy_ontime_count = df_ot_hy['Ontime'].sum() if hy_ot > 0 else 0
+        hy_rate = (hy_ontime_count / hy_ot * 100) if hy_ot > 0 else 0
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Tổng Ontime Rate", f"{ontime_rate:.1f}%", f"{ontime_count:,.0f}/{total_ot:,.0f} kiện")
+        m2.metric("Đài Tư Ontime Rate", f"{dt_rate:.1f}%", f"{dt_ontime_count:,.0f}/{dt_ot:,.0f} kiện")
+        m3.metric("Hưng Yên Ontime Rate", f"{hy_rate:.1f}%", f"{hy_ontime_count:,.0f}/{hy_ot:,.0f} kiện")
+        
+        sub1, sub2, sub3 = st.tabs(['📊 Tổng hợp', '🏭 B2B Đài Tư', '🏭 B2B Hưng Yên'])
+        
+        with sub1:
+            df_ot['Ngày'] = df_ot['NgayNhap'].dt.date
+            
+            if 'KhoNhap' in df_ot.columns:
+                df_ot['Kho'] = df_ot['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
+                grouped_ot = df_ot[df_ot['Kho'].isin(['Đài Tư', 'Hưng Yên'])].groupby(['Ngày', 'Kho']).agg(
+                    Tong=('MaKien', 'count'),
+                    Ontime=('Ontime', 'sum')
+                ).reset_index()
+                grouped_ot['Rate'] = (grouped_ot['Ontime'] / grouped_ot['Tong'] * 100).round(1)
+                
+                if not grouped_ot.empty:
+                    fig_ot = px.line(grouped_ot, x='Ngày', y='Rate', color='Kho', markers=True, title="Tỷ lệ Ontime xuất hàng theo ngày")
+                    st.plotly_chart(fig_ot, use_container_width=True)
+                    
+            summary_table = df_ot.groupby('Ngày').agg(
+                Tổng_đơn=('MaKien', 'count'),
+                Đã_xuất=('DaXuat', 'sum'),
+                Ontime=('Ontime', 'sum')
+            ).reset_index()
+            summary_table['Tỷ_lệ_Ontime'] = (summary_table['Ontime'] / summary_table['Tổng_đơn'] * 100).round(1)
+            st.dataframe(summary_table.style.format({'Tỷ_lệ_Ontime': '{:.1f}%'}), use_container_width=True)
+            
+        def render_ontime_wh(df_wh_ot, name):
+            if df_wh_ot.empty:
+                st.info(f"Không có dữ liệu ontime cho {name}")
+                return
+                
+            t_don = len(df_wh_ot)
+            t_on = df_wh_ot['Ontime'].sum()
+            t_rate = (t_on / t_don * 100) if t_don > 0 else 0
+            
+            st.markdown(f"**Tỷ lệ Ontime {name}: {t_rate:.1f}%** ({t_on}/{t_don} kiện)")
+            
+            df_wh_ot['Ngày'] = df_wh_ot['NgayNhap'].dt.date
+            chart_data = df_wh_ot.groupby('Ngày').agg(
+                Ontime=('Ontime', 'sum'),
+                Late=('Ontime', lambda x: (~x).sum())
+            ).reset_index()
+            
+            if not chart_data.empty:
+                fig_bar = px.bar(chart_data, x='Ngày', y=['Ontime', 'Late'], title=f"Ontime vs Late - {name}", barmode='group')
+                st.plotly_chart(fig_bar, use_container_width=True)
+                
+            cols_show = ['NgayNhap', 'MaKien', 'ThoiGianNhap', 'DeadlineXuat', 'DaXuat', 'ThoiGianXuat', 'Ontime']
+            cols_show = [c for c in cols_show if c in df_wh_ot.columns]
+            st.dataframe(df_wh_ot[cols_show].sort_values('NgayNhap', ascending=False), use_container_width=True)
+            
+        with sub2:
+            render_ontime_wh(df_ot_dt, "B2B ĐÀI TƯ")
+        with sub3:
+            render_ontime_wh(df_ot_hy, "B2B HƯNG YÊN")
+    else:
+        st.info("Không đủ dữ liệu hoặc thiếu cột cần thiết để tính Ontime.")
 
-        st.subheader("BIỂU ĐỒ TỶ LỆ ONTIME XUẤT HÀNG")
-        chart_data_2 = ontime_summary.sort_values('Period', ascending=True)
-        fig2 = px.line(chart_data_2, x='Period_Str', y='TyLe_Ontime (%)', color='client_name', markers=True,
-            labels={'Period_Str': 'Thời gian', 'TyLe_Ontime (%)': 'Tỷ lệ Ontime (%)', 'client_name': 'Tên khách hàng'})
-        fig2.update_xaxes(categoryorder='array', categoryarray=chart_data_2['Period_Str'].drop_duplicates().tolist())
-        fig2.update_layout(xaxis_title="Thời gian")
-        st.plotly_chart(fig2, use_container_width=True)
-
-    with st.expander("XEM CHI TIẾT CÁC ĐƠN BỊ TRỄ (LATE)"):
-        late_orders = df_ontime[~df_ontime['Is_Ontime']]
-        cols_show = ['order_code', 'client_name', 'KhoGiao', 'ThoiGianLayThanhCong', 'ThoiGianXuatKienDauTien', 'DeadlineXuat']
-        cols_show = [c for c in cols_show if c in late_orders.columns]
-        st.dataframe(late_orders[cols_show].sort_values('ThoiGianLayThanhCong', ascending=False))
 
 # ==================== TAB 3 ====================
 with tab3:
