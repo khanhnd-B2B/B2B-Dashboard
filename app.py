@@ -91,7 +91,7 @@ def load_data():
 
 df_raw, master_file_path = load_data()
 if df_raw.empty:
-    st.error(f"Không tìm thấy dữ liệu nguồn.")
+    st.error(f"Không tìm thấy dữ liệu nguồn. Thư mục hiện tại: {os.getcwd()}. Files: {os.listdir()}")
     st.stop()
 
 st.title("B2B DELIVERY REPORTING DASHBOARD")
