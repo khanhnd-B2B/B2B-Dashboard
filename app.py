@@ -180,9 +180,9 @@ with tab1:
     hungyen_kg = df_hungyen['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_hungyen.columns else 0
     
     m1, m2, m3 = st.columns(3)
-    m1.metric("🔢 TỔNG ĐƠN 2 KHO", f"{total_kien:,.0f} đơn - {total_kg:,.1f} kg")
-    m2.metric("🏭 B2B ĐÀI TƯ", f"{daitu_kien:,.0f} đơn - {daitu_kg:,.1f} kg")
-    m3.metric("🏭 B2B HƯNG YÊN", f"{hungyen_kien:,.0f} đơn - {hungyen_kg:,.1f} kg")
+    m1.metric("🔢 TỔNG ĐƠN 2 KHO NGÀY N-1", f"{total_kien:,.0f} đơn - {total_kg:,.0f} kg")
+    m2.metric("🏭 B2B ĐÀI TƯ", f"{daitu_kien:,.0f} đơn - {daitu_kg:,.0f} kg")
+    m3.metric("🏭 B2B HƯNG YÊN", f"{hungyen_kien:,.0f} đơn - {hungyen_kg:,.0f} kg")
     
     sub1, sub2, sub3 = st.tabs(['📊 Tổng hợp', '🏭 B2B Đài Tư', '🏭 B2B Hưng Yên'])
     
@@ -200,6 +200,7 @@ with tab1:
                 if not grouped_date_kho.empty:
                     fig1 = px.line(grouped_date_kho, x='Ngày', y='Số đơn', color='Kho', markers=True, title="Số đơn nhập theo thời gian")
                     fig1.update_xaxes(categoryorder='array', categoryarray=grouped_date_kho['Ngày'].unique())
+                    fig1.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{y} đơn")
                     st.plotly_chart(fig1, use_container_width=True)
                 else:
                     st.info("Không có dữ liệu cho biểu đồ số đơn nhập theo thời gian.")
@@ -209,6 +210,7 @@ with tab1:
                 if not grouped_nguon.empty:
                     fig2 = px.bar(grouped_nguon, x='Ngày', y='Số đơn', color='NguonNhap', barmode='stack', title="Nguồn nhập theo thời gian", labels={'NguonNhap': ''})
                     fig2.update_xaxes(categoryorder='array', categoryarray=grouped_nguon['Ngày'].unique())
+                    fig2.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{y} đơn")
                     st.plotly_chart(fig2, use_container_width=True)
                 else:
                     st.info("Không có dữ liệu cho biểu đồ nguồn nhập.")
@@ -235,16 +237,18 @@ with tab1:
         with col_chart1:
             if 'NguonNhap' in df_wh.columns:
                 pie_data = df_wh['NguonNhap'].value_counts().reset_index()
-                pie_data.columns = ['Nguồn nhập', 'Số kiện']
+                pie_data.columns = ['Nguồn nhập', 'Số đơn']
                 if not pie_data.empty:
-                    fig_pie = px.pie(pie_data, values='Số kiện', names='Nguồn nhập', title="Tỷ lệ nguồn nhập")
+                    fig_pie = px.pie(pie_data, values='Số đơn', names='Nguồn nhập', title="Tỷ lệ nguồn nhập")
+                    fig_pie.update_traces(hovertemplate="%{label}<br>%{value} đơn")
                     st.plotly_chart(fig_pie, use_container_width=True)
         with col_chart2:
-            if 'TinhGiao' in df_wh.columns:
-                top_tinh = df_wh['TinhGiao'].value_counts().nlargest(15).reset_index()
-                top_tinh.columns = ['Tỉnh giao', 'Số đơn']
+            if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns:
+                top_tinh = df_wh.groupby('TinhGiao').agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).nlargest(15, 'Số_đơn').reset_index()
+                top_tinh.columns = ['Tỉnh giao', 'Số đơn', 'Tổng KG']
                 if not top_tinh.empty:
-                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y='Số đơn', title="Top 15 Tỉnh giao")
+                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y='Số đơn', title="Top 15 Tỉnh giao", custom_data=['Tổng KG'])
+                    fig_bar.update_traces(hovertemplate="%{x}<br>%{y} đơn - %{customdata[0]:,.0f} kg")
                     st.plotly_chart(fig_bar, use_container_width=True)
                     
         col_tbl1, col_tbl2 = st.columns(2)
@@ -254,8 +258,8 @@ with tab1:
                 tbl_client = df_wh.groupby('Client_ID').agg(
                     Số_đơn=('MaKien', 'count'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
-                ).reset_index().sort_values('Số_kiện', ascending=False)
-                st.dataframe(tbl_client.style.format({'Tổng_KG': '{:,.1f}'}), use_container_width=True)
+                ).reset_index().sort_values('Số_đơn', ascending=False)
+                st.dataframe(tbl_client.style.format({'Tổng_KG': '{:,.0f}'}), use_container_width=True)
                 
         with col_tbl2:
             st.markdown("**Chi tiết theo Tỉnh giao**")
@@ -263,8 +267,8 @@ with tab1:
                 tbl_tinh = df_wh.groupby('TinhGiao').agg(
                     Số_đơn=('MaKien', 'count'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
-                ).reset_index().sort_values('Số_kiện', ascending=False)
-                st.dataframe(tbl_tinh.style.format({'Tổng_KG': '{:,.1f}'}), use_container_width=True)
+                ).reset_index().sort_values('Số_đơn', ascending=False)
+                st.dataframe(tbl_tinh.style.format({'Tổng_KG': '{:,.0f}'}), use_container_width=True)
 
     with sub2:
         render_warehouse_tab(df_daitu, "B2B ĐÀI TƯ")
