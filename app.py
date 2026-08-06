@@ -275,6 +275,10 @@ with tab2:
         
     if 'KhoGiao' in df_ot.columns:
         df_ot = df_ot[~df_ot['KhoGiao'].fillna('').str.contains('Đài Tư', case=False)]
+    
+    # Loại bỏ đơn có KhoLay = KhoGiao (đơn giao tại chính kho lấy)
+    if 'KhoLay_ID' in df_ot.columns and 'KhoGiao_ID' in df_ot.columns:
+        df_ot = df_ot[df_ot['KhoLay_ID'] != df_ot['KhoGiao_ID']]
         
     if not df_ot.empty and 'ThoiGianNhap' in df_ot.columns and 'KhoNhap_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns and 'TrangThaiViTriInside' in df_ot.columns and 'InsideThaoTacGanNhat' in df_ot.columns and 'InsideThoiGianGanNhat' in df_ot.columns:
         df_ot['GioNhap'] = df_ot['ThoiGianNhap'].dt.hour
