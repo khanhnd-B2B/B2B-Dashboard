@@ -77,8 +77,11 @@ def load_data():
     if df.empty:
         local_file = 'data_b2b.xlsx'
         if os.path.exists(local_file):
-            df = pd.read_excel(local_file)
-            source_used = local_file
+            try:
+                df = pd.read_excel(local_file)
+                source_used = local_file
+            except Exception as e:
+                return pd.DataFrame(), f"Error reading {local_file}: {str(e)}"
         else:
             return pd.DataFrame(), "Không tìm thấy dữ liệu"
             
@@ -91,7 +94,7 @@ def load_data():
 
 df_raw, master_file_path = load_data()
 if df_raw.empty:
-    st.error(f"Không tìm thấy dữ liệu nguồn. Thư mục hiện tại: {os.getcwd()}. Files: {os.listdir()}")
+    st.error(f"Lỗi tải dữ liệu: {master_file_path}")
     st.stop()
 
 st.title("B2B DELIVERY REPORTING DASHBOARD")
