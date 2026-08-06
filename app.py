@@ -180,9 +180,9 @@ with tab1:
     hungyen_kg = df_hungyen['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_hungyen.columns else 0
     
     m1, m2, m3 = st.columns(3)
-    m1.metric("🔢 TỔNG KIỆN 2 KHO", f"{total_kien:,.0f} kiện", f"{total_kg:,.1f} KG")
-    m2.metric("🏭 B2B ĐÀI TƯ", f"{daitu_kien:,.0f} kiện", f"{daitu_kg:,.1f} KG")
-    m3.metric("🏭 B2B HƯNG YÊN", f"{hungyen_kien:,.0f} kiện", f"{hungyen_kg:,.1f} KG")
+    m1.metric("🔢 TỔNG ĐƠN 2 KHO", f"{total_kien:,.0f} đơn - {total_kg:,.1f} kg")
+    m2.metric("🏭 B2B ĐÀI TƯ", f"{daitu_kien:,.0f} đơn - {daitu_kg:,.1f} kg")
+    m3.metric("🏭 B2B HƯNG YÊN", f"{hungyen_kien:,.0f} đơn - {hungyen_kg:,.1f} kg")
     
     sub1, sub2, sub3 = st.tabs(['📊 Tổng hợp', '🏭 B2B Đài Tư', '🏭 B2B Hưng Yên'])
     
@@ -192,21 +192,23 @@ with tab1:
             df_chart1['Ngày'] = df_chart1['Period_Str']
             
             if 'KhoNhap' in df_chart1.columns:
-                grouped_date_kho = df_chart1.groupby(['Ngày', 'KhoNhap']).size().reset_index(name='Số kiện')
+                grouped_date_kho = df_chart1.groupby(['Period', 'Ngày', 'KhoNhap']).size().reset_index(name='Số đơn')
                 grouped_date_kho['Kho'] = grouped_date_kho['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
                 grouped_date_kho = grouped_date_kho[grouped_date_kho['Kho'].isin(['Đài Tư', 'Hưng Yên'])]
-                grouped_date_kho = grouped_date_kho.groupby(['Ngày', 'Kho'])['Số kiện'].sum().reset_index()
+                grouped_date_kho = grouped_date_kho.groupby(['Period', 'Ngày', 'Kho'])['Số đơn'].sum().reset_index().sort_values('Period')
                 
                 if not grouped_date_kho.empty:
-                    fig1 = px.line(grouped_date_kho, x='Ngày', y='Số kiện', color='Kho', markers=True, title="Số kiện nhập theo ngày")
+                    fig1 = px.line(grouped_date_kho, x='Ngày', y='Số đơn', color='Kho', markers=True, title="Số đơn nhập theo thời gian")
+                    fig1.update_xaxes(categoryorder='array', categoryarray=grouped_date_kho['Ngày'].unique())
                     st.plotly_chart(fig1, use_container_width=True)
                 else:
-                    st.info("Không có dữ liệu cho biểu đồ số kiện nhập theo ngày.")
+                    st.info("Không có dữ liệu cho biểu đồ số đơn nhập theo thời gian.")
                     
             if 'NguonNhap' in df_chart1.columns:
-                grouped_nguon = df_chart1.groupby(['Ngày', 'NguonNhap']).size().reset_index(name='Số kiện')
+                grouped_nguon = df_chart1.groupby(['Period', 'Ngày', 'NguonNhap']).size().reset_index(name='Số đơn').sort_values('Period')
                 if not grouped_nguon.empty:
-                    fig2 = px.bar(grouped_nguon, x='Ngày', y='Số kiện', color='NguonNhap', barmode='stack', title="Nguồn nhập theo ngày (Tự lấy vs Nhập từ kho khác)")
+                    fig2 = px.bar(grouped_nguon, x='Ngày', y='Số đơn', color='NguonNhap', barmode='stack', title="Nguồn nhập theo thời gian", labels={'NguonNhap': ''})
+                    fig2.update_xaxes(categoryorder='array', categoryarray=grouped_nguon['Ngày'].unique())
                     st.plotly_chart(fig2, use_container_width=True)
                 else:
                     st.info("Không có dữ liệu cho biểu đồ nguồn nhập.")
@@ -225,9 +227,9 @@ with tab1:
         khac_count = len(df_khac)
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("Tổng nhập", f"{total:,.0f} kiện")
-        c2.metric("Tự lấy", f"{tu_lay_count:,.0f} kiện")
-        c3.metric("Nhập từ kho khác", f"{khac_count:,.0f} kiện")
+        c1.metric("Tổng nhập", f"{total:,.0f} đơn")
+        c2.metric("Tự lấy", f"{tu_lay_count:,.0f} đơn")
+        c3.metric("Nhập từ kho khác", f"{khac_count:,.0f} đơn")
         
         col_chart1, col_chart2 = st.columns(2)
         with col_chart1:
@@ -240,9 +242,9 @@ with tab1:
         with col_chart2:
             if 'TinhGiao' in df_wh.columns:
                 top_tinh = df_wh['TinhGiao'].value_counts().nlargest(15).reset_index()
-                top_tinh.columns = ['Tỉnh giao', 'Số kiện']
+                top_tinh.columns = ['Tỉnh giao', 'Số đơn']
                 if not top_tinh.empty:
-                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y='Số kiện', title="Top 15 Tỉnh giao")
+                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y='Số đơn', title="Top 15 Tỉnh giao")
                     st.plotly_chart(fig_bar, use_container_width=True)
                     
         col_tbl1, col_tbl2 = st.columns(2)
@@ -250,7 +252,7 @@ with tab1:
             st.markdown("**Chi tiết theo Client_ID**")
             if 'Client_ID' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaKien' in df_wh.columns:
                 tbl_client = df_wh.groupby('Client_ID').agg(
-                    Số_kiện=('MaKien', 'count'),
+                    Số_đơn=('MaKien', 'count'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
                 ).reset_index().sort_values('Số_kiện', ascending=False)
                 st.dataframe(tbl_client.style.format({'Tổng_KG': '{:,.1f}'}), use_container_width=True)
@@ -259,7 +261,7 @@ with tab1:
             st.markdown("**Chi tiết theo Tỉnh giao**")
             if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaKien' in df_wh.columns:
                 tbl_tinh = df_wh.groupby('TinhGiao').agg(
-                    Số_kiện=('MaKien', 'count'),
+                    Số_đơn=('MaKien', 'count'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
                 ).reset_index().sort_values('Số_kiện', ascending=False)
                 st.dataframe(tbl_tinh.style.format({'Tổng_KG': '{:,.1f}'}), use_container_width=True)
@@ -324,9 +326,9 @@ with tab2:
         hy_rate = (hy_ontime_count / hy_ot * 100) if hy_ot > 0 else 0
         
         m1, m2, m3 = st.columns(3)
-        m1.metric("Tổng Ontime Rate", f"{ontime_rate:.1f}%", f"{ontime_count:,.0f}/{total_ot:,.0f} kiện")
-        m2.metric("Đài Tư Ontime Rate", f"{dt_rate:.1f}%", f"{dt_ontime_count:,.0f}/{dt_ot:,.0f} kiện")
-        m3.metric("Hưng Yên Ontime Rate", f"{hy_rate:.1f}%", f"{hy_ontime_count:,.0f}/{hy_ot:,.0f} kiện")
+        m1.metric("Tổng Ontime Rate", f"{ontime_rate:.1f}%", f"{ontime_count:,.0f}/{total_ot:,.0f} đơn")
+        m2.metric("Đài Tư Ontime Rate", f"{dt_rate:.1f}%", f"{dt_ontime_count:,.0f}/{dt_ot:,.0f} đơn")
+        m3.metric("Hưng Yên Ontime Rate", f"{hy_rate:.1f}%", f"{hy_ontime_count:,.0f}/{hy_ot:,.0f} đơn")
         
         sub1, sub2, sub3 = st.tabs(['📊 Tổng hợp', '🏭 B2B Đài Tư', '🏭 B2B Hưng Yên'])
         
@@ -335,14 +337,15 @@ with tab2:
             
             if 'KhoNhap' in df_ot.columns:
                 df_ot['Kho'] = df_ot['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
-                grouped_ot = df_ot[df_ot['Kho'].isin(['Đài Tư', 'Hưng Yên'])].groupby(['Ngày', 'Kho']).agg(
+                grouped_ot = df_ot[df_ot['Kho'].isin(['Đài Tư', 'Hưng Yên'])].groupby(['Period', 'Ngày', 'Kho']).agg(
                     Tong=('MaKien', 'count'),
                     Ontime=('Ontime', 'sum')
-                ).reset_index()
+                ).reset_index().sort_values('Period')
                 grouped_ot['Rate'] = (grouped_ot['Ontime'] / grouped_ot['Tong'] * 100).round(1)
                 
                 if not grouped_ot.empty:
-                    fig_ot = px.line(grouped_ot, x='Ngày', y='Rate', color='Kho', markers=True, title="Tỷ lệ Ontime xuất hàng theo ngày")
+                    fig_ot = px.line(grouped_ot, x='Ngày', y='Rate', color='Kho', markers=True, title="Tỷ lệ Ontime xuất hàng theo thời gian")
+                    fig_ot.update_xaxes(categoryorder='array', categoryarray=grouped_ot['Ngày'].unique())
                     st.plotly_chart(fig_ot, use_container_width=True)
                     
             summary_table = df_ot.groupby('Ngày').agg(
@@ -362,16 +365,17 @@ with tab2:
             t_on = df_wh_ot['Ontime'].sum()
             t_rate = (t_on / t_don * 100) if t_don > 0 else 0
             
-            st.markdown(f"**Tỷ lệ Ontime {name}: {t_rate:.1f}%** ({t_on}/{t_don} kiện)")
+            st.markdown(f"**Tỷ lệ Ontime {name}: {t_rate:.1f}%** ({t_on}/{t_don} đơn)")
             
             df_wh_ot['Ngày'] = df_wh_ot['Period_Str']
-            chart_data = df_wh_ot.groupby('Ngày').agg(
+            chart_data = df_wh_ot.groupby(['Period', 'Ngày']).agg(
                 Ontime=('Ontime', 'sum'),
                 Late=('Ontime', lambda x: (~x).sum())
-            ).reset_index()
+            ).reset_index().sort_values('Period')
             
             if not chart_data.empty:
                 fig_bar = px.bar(chart_data, x='Ngày', y=['Ontime', 'Late'], title=f"Ontime vs Late - {name}", barmode='group')
+                fig_bar.update_xaxes(categoryorder='array', categoryarray=chart_data['Ngày'].unique())
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
             cols_show = ['NgayNhap', 'MaDonGoc', 'ThoiGianNhap', 'DeadlineXuat', 'DaXuat', 'ThoiGianXuat', 'Ontime']
