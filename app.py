@@ -168,21 +168,27 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["1. SẢN LƯỢNG NHẬP KHO", "2. ONTI
 with tab1:
     st.header("BÁO CÁO SẢN LƯỢNG NHẬP KHO")
     
-    total_kien = len(df_filtered)
-    total_kg = df_filtered['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_filtered.columns else 0
-    
     df_daitu = df_filtered[df_filtered['KhoNhap'].str.contains('Đài Tư', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
-    daitu_kien = len(df_daitu)
-    daitu_kg = df_daitu['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_daitu.columns else 0
-    
     df_hungyen = df_filtered[df_filtered['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
-    hungyen_kien = len(df_hungyen)
-    hungyen_kg = df_hungyen['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_hungyen.columns else 0
+
+    df_n1 = df_filtered[df_filtered['NgayNhap'].dt.date == df_filtered['NgayNhap'].max().date()] if not df_filtered.empty and 'NgayNhap' in df_filtered.columns else pd.DataFrame()
+    total_kien = len(df_n1)
+    total_kg = df_n1['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_n1.columns else 0
+    
+    df_daitu_n1 = df_n1[df_n1['KhoNhap'].str.contains('Đài Tư', case=False, na=False)] if 'KhoNhap' in df_n1.columns else pd.DataFrame()
+    daitu_kien = len(df_daitu_n1)
+    daitu_kg = df_daitu_n1['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_daitu_n1.columns else 0
+    
+    df_hungyen_n1 = df_n1[df_n1['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_n1.columns else pd.DataFrame()
+    hungyen_kien = len(df_hungyen_n1)
+    hungyen_kg = df_hungyen_n1['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_hungyen_n1.columns else 0
     
     m1, m2, m3 = st.columns(3)
     m1.metric("🔢 TỔNG ĐƠN 2 KHO NGÀY N-1", f"{total_kien:,.0f} đơn - {total_kg:,.0f} kg")
     m2.metric("🏭 B2B ĐÀI TƯ", f"{daitu_kien:,.0f} đơn - {daitu_kg:,.0f} kg")
     m3.metric("🏭 B2B HƯNG YÊN", f"{hungyen_kien:,.0f} đơn - {hungyen_kg:,.0f} kg")
+    
+    metric_view = st.radio("Hiển thị biểu đồ theo:", ["Số đơn", "Khối lượng (kg)"], horizontal=True)
     
     sub1, sub2, sub3 = st.tabs(['📊 Tổng hợp', '🏭 B2B Đài Tư', '🏭 B2B Hưng Yên'])
     
@@ -192,25 +198,28 @@ with tab1:
             df_chart1['Ngày'] = df_chart1['Period_Str']
             
             if 'KhoNhap' in df_chart1.columns:
-                grouped_date_kho = df_chart1.groupby(['Period', 'Ngày', 'KhoNhap']).size().reset_index(name='Số đơn')
+                grouped_date_kho = df_chart1.groupby(['Period', 'Ngày', 'KhoNhap']).agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
                 grouped_date_kho['Kho'] = grouped_date_kho['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
                 grouped_date_kho = grouped_date_kho[grouped_date_kho['Kho'].isin(['Đài Tư', 'Hưng Yên'])]
-                grouped_date_kho = grouped_date_kho.groupby(['Period', 'Ngày', 'Kho'])['Số đơn'].sum().reset_index().sort_values('Period')
+                grouped_date_kho = grouped_date_kho.groupby(['Period', 'Ngày', 'Kho']).agg({'Số_đơn': 'sum', 'Tổng_KG': 'sum'}).reset_index().sort_values('Period')
                 
                 if not grouped_date_kho.empty:
-                    fig1 = px.line(grouped_date_kho, x='Ngày', y='Số đơn', color='Kho', markers=True, title="Số đơn nhập theo thời gian")
+                    y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
+                    title = "Số đơn nhập theo thời gian" if metric_view == 'Số đơn' else "Khối lượng nhập theo thời gian"
+                    fig1 = px.line(grouped_date_kho, x='Ngày', y=y_col, color='Kho', markers=True, title=title, custom_data=['Số_đơn', 'Tổng_KG'])
                     fig1.update_xaxes(categoryorder='array', categoryarray=grouped_date_kho['Ngày'].unique())
-                    fig1.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{y} đơn")
+                    fig1.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig1, use_container_width=True)
                 else:
                     st.info("Không có dữ liệu cho biểu đồ số đơn nhập theo thời gian.")
                     
             if 'NguonNhap' in df_chart1.columns:
-                grouped_nguon = df_chart1.groupby(['Period', 'Ngày', 'NguonNhap']).size().reset_index(name='Số đơn').sort_values('Period')
+                grouped_nguon = df_chart1.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
                 if not grouped_nguon.empty:
-                    fig2 = px.bar(grouped_nguon, x='Ngày', y='Số đơn', color='NguonNhap', barmode='stack', title="Nguồn nhập theo thời gian", labels={'NguonNhap': ''})
+                    y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
+                    fig2 = px.bar(grouped_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title="Nguồn nhập theo thời gian", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
                     fig2.update_xaxes(categoryorder='array', categoryarray=grouped_nguon['Ngày'].unique())
-                    fig2.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{y} đơn")
+                    fig2.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig2, use_container_width=True)
                 else:
                     st.info("Không có dữ liệu cho biểu đồ nguồn nhập.")
@@ -236,19 +245,22 @@ with tab1:
         col_chart1, col_chart2 = st.columns(2)
         with col_chart1:
             if 'NguonNhap' in df_wh.columns:
-                pie_data = df_wh['NguonNhap'].value_counts().reset_index()
-                pie_data.columns = ['Nguồn nhập', 'Số đơn']
+                pie_data = df_wh.groupby('NguonNhap').agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
+                pie_data.columns = ['Nguồn nhập', 'Số đơn', 'Tổng KG']
                 if not pie_data.empty:
-                    fig_pie = px.pie(pie_data, values='Số đơn', names='Nguồn nhập', title="Tỷ lệ nguồn nhập")
-                    fig_pie.update_traces(hovertemplate="%{label}<br>%{value} đơn")
+                    val_col = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
+                    fig_pie = px.pie(pie_data, values=val_col, names='Nguồn nhập', title="Tỷ lệ nguồn nhập", custom_data=['Số đơn', 'Tổng KG'])
+                    fig_pie.update_traces(hovertemplate="%{label}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig_pie, use_container_width=True)
         with col_chart2:
             if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns:
-                top_tinh = df_wh.groupby('TinhGiao').agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).nlargest(15, 'Số_đơn').reset_index()
+                val_col_tinh = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
+                top_tinh = df_wh.groupby('TinhGiao').agg(Số_đơn=('MaKien', 'count'), Tổng_KG=('KhoiLuongKG', 'sum')).nlargest(15, val_col_tinh).reset_index()
                 top_tinh.columns = ['Tỉnh giao', 'Số đơn', 'Tổng KG']
                 if not top_tinh.empty:
-                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y='Số đơn', title="Top 15 Tỉnh giao", custom_data=['Tổng KG'])
-                    fig_bar.update_traces(hovertemplate="%{x}<br>%{y} đơn - %{customdata[0]:,.0f} kg")
+                    y_col_tinh = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
+                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y=y_col_tinh, title="Top 15 Tỉnh giao", custom_data=['Số đơn', 'Tổng KG'])
+                    fig_bar.update_traces(hovertemplate="%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig_bar, use_container_width=True)
                     
         col_tbl1, col_tbl2 = st.columns(2)
