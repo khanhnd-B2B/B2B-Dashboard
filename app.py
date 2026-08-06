@@ -75,7 +75,7 @@ def load_data():
         pass
         
     if df.empty:
-        local_file = 'Data B2B mới.xlsx'
+        local_file = 'data_b2b.xlsx'
         if os.path.exists(local_file):
             df = pd.read_excel(local_file)
             source_used = local_file
