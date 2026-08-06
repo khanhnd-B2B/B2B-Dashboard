@@ -275,9 +275,10 @@ with tab1:
                 pie_data.columns = ['Nguồn nhập', 'Số đơn', 'Tổng KG']
                 pie_data = pie_data.fillna(0)
                 if not pie_data.empty:
+                    pie_data['hover_text'] = pie_data.apply(lambda r: f"{r['Số đơn']:,.0f} đơn - {r['Tổng KG']:,.0f} kg", axis=1)
                     val_col = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
-                    fig_pie = px.pie(pie_data, values=val_col, names='Nguồn nhập', title="Tỷ lệ nguồn nhập", hover_data=['Số đơn', 'Tổng KG'])
-                    fig_pie.update_traces(hovertemplate="%{label}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
+                    fig_pie = px.pie(pie_data, values=val_col, names='Nguồn nhập', title="Tỷ lệ nguồn nhập", custom_data=['hover_text'])
+                    fig_pie.update_traces(hovertemplate="%{label}<br>%{customdata[0]}")
                     st.plotly_chart(fig_pie, use_container_width=True)
         with col_chart2:
             if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns:
@@ -286,9 +287,10 @@ with tab1:
                 top_tinh.columns = ['Tỉnh giao', 'Số đơn', 'Tổng KG']
                 top_tinh = top_tinh.fillna(0)
                 if not top_tinh.empty:
+                    top_tinh['hover_text'] = top_tinh.apply(lambda r: f"{r['Số đơn']:,.0f} đơn - {r['Tổng KG']:,.0f} kg", axis=1)
                     y_col_tinh = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
-                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y=y_col_tinh, title="Top 15 Tỉnh giao", hover_data=['Số đơn', 'Tổng KG'])
-                    fig_bar.update_traces(hovertemplate="%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
+                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y=y_col_tinh, title="Top 15 Tỉnh giao", custom_data=['hover_text'])
+                    fig_bar.update_traces(hovertemplate="%{x}<br>%{customdata[0]}")
                     st.plotly_chart(fig_bar, use_container_width=True)
                     
         col_tbl1, col_tbl2 = st.columns(2)
