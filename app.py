@@ -384,7 +384,7 @@ with tab2:
             if 'KhoNhap' in df_ot.columns:
                 df_ot['Kho'] = df_ot['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
                 grouped_ot = df_ot[df_ot['Kho'].isin(['Đài Tư', 'Hưng Yên'])].groupby(['Period', 'Ngày', 'Kho']).agg(
-                    Tong=('MaKien', 'count'),
+                    Tong=('NgayNhap', 'size'),
                     Ontime=('Ontime', 'sum')
                 ).reset_index().sort_values('Period')
                 grouped_ot['Rate'] = (grouped_ot['Ontime'] / grouped_ot['Tong'] * 100).round(1)
@@ -395,7 +395,7 @@ with tab2:
                     st.plotly_chart(fig_ot, use_container_width=True)
                     
             summary_table = df_ot.groupby('Ngày').agg(
-                Tổng_đơn=('MaKien', 'count'),
+                Tổng_đơn=('NgayNhap', 'size'),
                 Đã_xuất=('DaXuat', 'sum'),
                 Ontime=('Ontime', 'sum')
             ).reset_index()
@@ -432,6 +432,15 @@ with tab2:
             render_ontime_wh(df_ot_dt, "B2B ĐÀI TƯ")
         with sub3:
             render_ontime_wh(df_ot_hy, "B2B HƯNG YÊN")
+            
+        with st.expander("❌ XEM CHI TIẾT ĐƠN XUẤT LATE (CHƯA XUẤT HOẶC XUẤT TRỄ)"):
+            late_orders = df_ot[~df_ot['Ontime']].copy()
+            if not late_orders.empty:
+                cols_late = ['NgayNhap', 'KhoNhap', 'MaDonGoc', 'ThoiGianNhap', 'DeadlineXuat', 'DaXuat', 'ThoiGianXuat']
+                cols_late = [c for c in cols_late if c in late_orders.columns]
+                st.dataframe(late_orders[cols_late].sort_values('NgayNhap', ascending=False), use_container_width=True)
+            else:
+                st.success("Tuyệt vời! Không có đơn nào xuất trễ.")
     else:
         st.info("Không đủ dữ liệu hoặc thiếu cột cần thiết để tính Ontime.")
 
@@ -441,7 +450,11 @@ with tab3:
     st.header("BÁO CÁO GIAO TRONG NGÀY - SAMEDAY (CONCUNG)")
     st.markdown("Quy định: Đơn Concung **lấy thành công** tại HN, Bắc Ninh, Hải Dương, Hưng Yên phải **giao thành công trong cùng ngày lấy**.")
 
-    df_concung = df_filtered[df_filtered['client_name'].str.contains('Concung|Con Cưng', case=False, na=False)].copy()
+    client_name_col = next((c for c in df_filtered.columns if c.lower() == 'client_name'), None)
+    if client_name_col:
+        df_concung = df_filtered[df_filtered[client_name_col].str.contains('Concung|Con Cưng', case=False, na=False)].copy()
+    else:
+        df_concung = pd.DataFrame()
     tinh_giao_hop_le = ['Hà Nội', 'Hưng Yên', 'Bắc Ninh', 'Hải Dương']
     df_concung = df_concung[df_concung['TinhGiao'].isin(tinh_giao_hop_le)]
     # Chỉ tính đơn đã lấy thành công
