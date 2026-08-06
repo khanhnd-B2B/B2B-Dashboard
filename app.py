@@ -140,6 +140,10 @@ def get_period_str(dt_series, f):
     elif f == 'W': return 'W' + dt_series.dt.strftime('%W-%Y')
     elif f == 'M': return 'T' + dt_series.dt.strftime('%m-%Y')
 
+if 'NgayNhap' in df_filtered.columns:
+    df_filtered['Period'] = get_period(df_filtered['NgayNhap'], freq)
+    df_filtered['Period_Str'] = get_period_str(df_filtered['NgayNhap'], freq)
+
 def display_dataframe(df_to_show):
     if isinstance(df_to_show.index, pd.MultiIndex):
         total_idx = ('TỔNG CỘNG', '')
@@ -185,7 +189,7 @@ with tab1:
     with sub1:
         if 'NgayNhap' in df_filtered.columns:
             df_chart1 = df_filtered.copy()
-            df_chart1['Ngày'] = df_chart1['NgayNhap'].dt.date
+            df_chart1['Ngày'] = df_chart1['Period_Str']
             
             if 'KhoNhap' in df_chart1.columns:
                 grouped_date_kho = df_chart1.groupby(['Ngày', 'KhoNhap']).size().reset_index(name='Số kiện')
@@ -327,7 +331,7 @@ with tab2:
         sub1, sub2, sub3 = st.tabs(['📊 Tổng hợp', '🏭 B2B Đài Tư', '🏭 B2B Hưng Yên'])
         
         with sub1:
-            df_ot['Ngày'] = df_ot['NgayNhap'].dt.date
+            df_ot['Ngày'] = df_ot['Period_Str']
             
             if 'KhoNhap' in df_ot.columns:
                 df_ot['Kho'] = df_ot['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
@@ -360,7 +364,7 @@ with tab2:
             
             st.markdown(f"**Tỷ lệ Ontime {name}: {t_rate:.1f}%** ({t_on}/{t_don} kiện)")
             
-            df_wh_ot['Ngày'] = df_wh_ot['NgayNhap'].dt.date
+            df_wh_ot['Ngày'] = df_wh_ot['Period_Str']
             chart_data = df_wh_ot.groupby('Ngày').agg(
                 Ontime=('Ontime', 'sum'),
                 Late=('Ontime', lambda x: (~x).sum())
@@ -370,7 +374,7 @@ with tab2:
                 fig_bar = px.bar(chart_data, x='Ngày', y=['Ontime', 'Late'], title=f"Ontime vs Late - {name}", barmode='group')
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
-            cols_show = ['NgayNhap', 'MaKien', 'ThoiGianNhap', 'DeadlineXuat', 'DaXuat', 'ThoiGianXuat', 'Ontime']
+            cols_show = ['NgayNhap', 'MaDonGoc', 'ThoiGianNhap', 'DeadlineXuat', 'DaXuat', 'ThoiGianXuat', 'Ontime']
             cols_show = [c for c in cols_show if c in df_wh_ot.columns]
             st.dataframe(df_wh_ot[cols_show].sort_values('NgayNhap', ascending=False), use_container_width=True)
             
