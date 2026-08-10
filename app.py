@@ -79,6 +79,12 @@ def load_data():
         if os.path.exists(local_file):
             try:
                 df = pd.read_excel(local_file)
+                if len(df.columns) > 0 and str(df.columns[0]).startswith('Unnamed:'):
+                    for i in range(min(5, len(df))):
+                        if 'NgayNhap' in df.iloc[i].values:
+                            df.columns = df.iloc[i]
+                            df = df[i+1:].reset_index(drop=True)
+                            break
                 source_used = local_file
             except Exception as e:
                 return pd.DataFrame(), f"Error reading {local_file}: {str(e)}"
