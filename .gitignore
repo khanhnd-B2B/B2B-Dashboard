@@ -2,3 +2,7 @@
 *.xlsx
 __pycache__/
 b2b_network.db
+
+.env
+.streamlit/secrets.toml
+secrets.toml
