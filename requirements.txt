@@ -4,4 +4,5 @@ plotly
 openpyxl
 requests
 psycopg2-binary
-sqlalchemystreamlit-cookies-controller
+sqlalchemy
+streamlit-cookies-controller
