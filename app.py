@@ -159,9 +159,11 @@ def get_period(dt_series, f):
     elif f == 'M': return dt_series.dt.to_period('M').dt.start_time
 
 def get_period_str(dt_series, f):
-    if f == 'D': return dt_series.dt.strftime('%d/%m/%Y')
-    elif f == 'W': return 'W' + dt_series.dt.strftime('%W-%Y')
-    elif f == 'M': return 'T' + dt_series.dt.strftime('%m-%Y')
+    if f == 'D': 
+        weekday = (dt_series.dt.weekday + 2).astype(str).replace('8', 'CN')
+        return dt_series.dt.strftime('%Y-%m-%d') + ' - Thứ ' + weekday
+    elif f == 'W': return dt_series.dt.strftime('%Y/%W')
+    elif f == 'M': return dt_series.dt.strftime('%Y/%m')
 
 if 'NgayNhap' in df_filtered.columns:
     df_filtered['Period'] = get_period(df_filtered['NgayNhap'], freq)
@@ -194,22 +196,38 @@ with tab1:
     df_daitu = df_filtered[df_filtered['KhoNhap'].str.contains('Đài Tư', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
     df_hungyen = df_filtered[df_filtered['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
 
-    df_n1 = df_filtered[df_filtered['NgayNhap'].dt.date == df_filtered['NgayNhap'].max().date()] if not df_filtered.empty and 'NgayNhap' in df_filtered.columns else pd.DataFrame()
-    total_kien = df_n1['MaDonGoc'].nunique() if 'MaDonGoc' in df_n1.columns else len(df_n1)
-    total_kg = df_n1['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_n1.columns else 0
+    st.markdown("<h3 style='color: #004b8b; text-decoration: underline;'>A. Overview</h3>", unsafe_allow_html=True)
     
-    df_daitu_n1 = df_n1[df_n1['KhoNhap'].str.contains('Đài Tư', case=False, na=False)] if 'KhoNhap' in df_n1.columns else pd.DataFrame()
-    daitu_kien = df_daitu_n1['MaDonGoc'].nunique() if 'MaDonGoc' in df_daitu_n1.columns else len(df_daitu_n1)
-    daitu_kg = df_daitu_n1['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_daitu_n1.columns else 0
-    
-    df_hungyen_n1 = df_n1[df_n1['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_n1.columns else pd.DataFrame()
-    hungyen_kien = df_hungyen_n1['MaDonGoc'].nunique() if 'MaDonGoc' in df_hungyen_n1.columns else len(df_hungyen_n1)
-    hungyen_kg = df_hungyen_n1['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_hungyen_n1.columns else 0
-    
-    m1, m2, m3 = st.columns(3)
-    m1.metric("🔢 TỔNG ĐƠN 2 KHO NGÀY N-1", f"{total_kien:,.0f} đơn - {total_kg:,.0f} kg")
-    m2.metric("🏭 B2B ĐÀI TƯ", f"{daitu_kien:,.0f} đơn - {daitu_kg:,.0f} kg")
-    m3.metric("🏭 B2B HƯNG YÊN", f"{hungyen_kien:,.0f} đơn - {hungyen_kg:,.0f} kg")
+    if 'ThoiGianLayThanhCong' in df_filtered.columns and 'ThoiGianTao' in df_filtered.columns:
+        df_filtered['Leadtime_Lay_Tao'] = (df_filtered['ThoiGianLayThanhCong'] - df_filtered['ThoiGianTao']).dt.total_seconds() / 3600
+        
+    if 'NgayNhap' in df_filtered.columns and not df_filtered.empty:
+        df_ltc = df_filtered[df_filtered['ThoiGianLayThanhCong'].notna()] if 'ThoiGianLayThanhCong' in df_filtered.columns else df_filtered
+        ltc_counts = df_ltc.groupby('Period_Str')['MaDonGoc'].nunique() if 'MaDonGoc' in df_ltc.columns else df_ltc.groupby('Period_Str').size()
+        kg_sums = df_filtered.groupby('Period_Str')['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_filtered.columns else pd.Series(dtype=float)
+        leadtime_means = df_filtered.groupby('Period_Str')['Leadtime_Lay_Tao'].mean() if 'Leadtime_Lay_Tao' in df_filtered.columns else pd.Series(dtype=float)
+        
+        overview_group = pd.DataFrame({
+            'Tổng đơn LTC': ltc_counts,
+            'Tổng khối lượng (KG)': kg_sums,
+            'Leadtime Lấy - Tạo (hour)': leadtime_means
+        }).fillna(0)
+        
+        period_map = df_filtered.set_index('Period_Str')['Period'].to_dict()
+        overview_group['Period'] = overview_group.index.map(period_map)
+        overview_group = overview_group.sort_values('Period', ascending=False).drop(columns=['Period']).head(15).T
+        overview_group.index.name = 'Thời gian'
+        
+        for col in overview_group.columns:
+            overview_group[col] = [
+                f"{overview_group.loc['Tổng đơn LTC', col]:,.0f}".replace(',', '.'),
+                f"{overview_group.loc['Tổng khối lượng (KG)', col]:,.0f}".replace(',', '.'),
+                f"{overview_group.loc['Leadtime Lấy - Tạo (hour)', col]:,.2f}".replace('.', ',')
+            ]
+            
+        st.dataframe(overview_group, use_container_width=True)
+    else:
+        st.info("Không có dữ liệu tổng quan.")
     
     metric_view = st.radio("Hiển thị biểu đồ theo:", ["Số đơn", "Khối lượng (kg)"], horizontal=True)
     
