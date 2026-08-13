@@ -493,9 +493,23 @@ with tab2:
                 fig_bar.update_xaxes(categoryorder='array', categoryarray=chart_data['Ngày'].unique())
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
+            summary_table_wh = df_wh_ot.groupby('Ngày').agg(
+                Tổng_đơn=('NgayNhap', 'size'),
+                Đã_xuất=('DaXuat', 'sum'),
+                Ontime=('Ontime', 'sum')
+            ).reset_index()
+            summary_table_wh['Tỷ_lệ_Ontime'] = (summary_table_wh['Ontime'] / summary_table_wh['Tổng_đơn'] * 100).round(1)
+            st.markdown("**Bảng tổng hợp Ontime theo kỳ:**")
+            st.dataframe(summary_table_wh.style.format({'Tỷ_lệ_Ontime': '{:.1f}%'}), use_container_width=True)
+                
+            st.markdown("**Chi tiết các đơn Trễ (Late):**")
+            df_late = df_wh_ot[~df_wh_ot['Ontime']]
             cols_show = ['NgayNhap', 'MaDonGoc', 'ThoiGianNhap', 'DeadlineXuat', 'DaXuat', 'ThoiGianXuat', 'Ontime']
-            cols_show = [c for c in cols_show if c in df_wh_ot.columns]
-            st.dataframe(df_wh_ot[cols_show].sort_values('NgayNhap', ascending=False), use_container_width=True)
+            cols_show = [c for c in cols_show if c in df_late.columns]
+            if not df_late.empty:
+                st.dataframe(df_late[cols_show].sort_values('NgayNhap', ascending=False), use_container_width=True)
+            else:
+                st.success("Tuyệt vời! Không có đơn nào bị trễ.")
             
         with sub2:
             render_ontime_wh(df_ot_dt, "B2B ĐÀI TƯ")
