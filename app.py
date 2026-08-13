@@ -322,6 +322,17 @@ with tab1:
             c1.metric("Tổng nhập", f"{total_kg:,.0f} kg")
             c2.metric("Tự lấy", f"{tu_lay_kg:,.0f} kg")
             c3.metric("Nhập từ kho khác", f"{khac_kg:,.0f} kg")
+            
+        if 'NguonNhap' in df_wh.columns and 'Period_Str' in df_wh.columns:
+            df_wh['Ngày'] = df_wh['Period_Str']
+            grouped_wh_nguon = df_wh.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+            if not grouped_wh_nguon.empty:
+                y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
+                fig_wh_nguon = px.bar(grouped_wh_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title=f"Sản lượng nhập theo thời gian", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
+                fig_wh_nguon.update_xaxes(categoryorder='array', categoryarray=grouped_wh_nguon['Ngày'].unique())
+                fig_wh_nguon.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
+                st.plotly_chart(fig_wh_nguon, use_container_width=True)
+        
         
         col_chart1, col_chart2 = st.columns(2)
         with col_chart1:
