@@ -88,7 +88,7 @@ def load_data():
         pass
         
     if df.empty:
-        local_file = 'Data B2B moi 1408.xlsx'
+        local_file = 'Data B2B moi 1408.1.xlsx'
         if os.path.exists(local_file):
             try:
                 df = pd.read_excel(local_file)
@@ -105,7 +105,7 @@ def load_data():
             return pd.DataFrame(), "Không tìm thấy dữ liệu"
             
     if not df.empty:
-        dt_columns = ['ThoiGianNhap', 'InsideThoiGianGanNhat', 'NgayNhap']
+        dt_columns = ['ThoiGianNhap', 'InsideThoiGianGanNhat', 'NgayNhap', 'ThoiGianXuatKien']
         for col in dt_columns:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce').dt.tz_localize(None)
@@ -412,15 +412,18 @@ with tab2:
     if 'KhoGiao_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns:
         df_ot = df_ot[df_ot['KhoGiao_ID'] != df_ot['KhoHienTai_ID']]
         
-    if not df_ot.empty and 'ThoiGianNhap' in df_ot.columns and 'KhoNhap_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns and 'TrangThaiViTriInside' in df_ot.columns and 'InsideThaoTacGanNhat' in df_ot.columns and 'InsideThoiGianGanNhat' in df_ot.columns:
+    if not df_ot.empty and 'ThoiGianNhap' in df_ot.columns and 'KhoNhap_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns:
         df_ot['DeadlineXuat'] = df_ot['ThoiGianNhap'] + pd.Timedelta(hours=24)
         
-        is_exported = (df_ot['KhoHienTai_ID'] != df_ot['KhoNhap_ID']) | (df_ot['TrangThaiViTriInside'] == 'Đã xuất khỏi kho thao tác gần nhất')
-        df_ot['DaXuat'] = is_exported
-        
-        df_ot['ThoiGianXuat'] = pd.to_datetime(df_ot['InsideThoiGianGanNhat'])
+        if 'ThoiGianXuatKien' in df_ot.columns:
+            df_ot['ThoiGianXuat'] = pd.to_datetime(df_ot['ThoiGianXuatKien'])
+            df_ot['DaXuat'] = df_ot['ThoiGianXuat'].notna()
+        else:
+            is_exported = (df_ot['KhoHienTai_ID'] != df_ot['KhoNhap_ID']) | (df_ot.get('TrangThaiViTriInside', '') == 'Đã xuất khỏi kho thao tác gần nhất')
+            df_ot['DaXuat'] = is_exported
+            df_ot['ThoiGianXuat'] = pd.to_datetime(df_ot.get('InsideThoiGianGanNhat', pd.NaT))
+            
         now = pd.Timestamp.now()
-        
         df_ot['Ontime'] = (df_ot['DaXuat'] & (df_ot['ThoiGianXuat'] <= df_ot['DeadlineXuat'])) | (~df_ot['DaXuat'] & (now <= df_ot['DeadlineXuat']))
         
         total_ot = len(df_ot)
