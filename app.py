@@ -483,11 +483,13 @@ with tab2:
             df_wh_ot['Ngày'] = df_wh_ot['Period_Str']
             chart_data = df_wh_ot.groupby(['Period', 'Ngày']).agg(
                 Ontime=('Ontime', 'sum'),
-                Late=('Ontime', lambda x: (~x).sum())
+                Trễ=('Ontime', lambda x: (~x).sum())
             ).reset_index().sort_values('Period')
             
             if not chart_data.empty:
-                fig_bar = px.bar(chart_data, x='Ngày', y=['Ontime', 'Late'], title=f"Ontime vs Late - {name}", barmode='group')
+                fig_bar = px.bar(chart_data, x='Ngày', y=['Ontime', 'Trễ'], title=f"Ontime và Trễ - {name}", barmode='group')
+                fig_bar.update_layout(legend_title_text='')
+                fig_bar.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{y} đơn")
                 fig_bar.update_xaxes(categoryorder='array', categoryarray=chart_data['Ngày'].unique())
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
