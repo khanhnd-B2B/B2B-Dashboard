@@ -45,14 +45,13 @@ def require_login():
             user_res = requests.get("https://www.googleapis.com/oauth2/v2/userinfo", headers={"Authorization": f"Bearer {access_token}"})
             if user_res.status_code == 200:
                 email = user_res.json().get("email", "").lower()
-                # Cho phép nếu là mail @ghn.vn HOẶC nằm trong danh sách ALLOWED_EMAILS
                 if email.endswith("@ghn.vn") or email in ALLOWED_EMAILS:
                     st.session_state["authenticated"] = True
                     st.session_state["user_email"] = email
                     # Lưu cookie trong 30 ngày (86400 * 30 = 2592000 giây)
                     controller.set("ghn_b2b_email", email, max_age=2592000)
                     st.query_params.clear()
-                    st.rerun()
+                    return True
 
                 else:
                     st.error(f"❌ Truy cập bị từ chối. Email '{email}' không có quyền truy cập.")
