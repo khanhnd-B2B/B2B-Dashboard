@@ -88,7 +88,7 @@ def load_data():
         pass
         
     if df.empty:
-        local_file = 'data_b2b.xlsx'
+        local_file = 'Data B2B moi 1408.xlsx'
         if os.path.exists(local_file):
             try:
                 df = pd.read_excel(local_file)
@@ -148,7 +148,9 @@ with col3:
         
     kho_nhap_filter = st.selectbox("🏭 KHO NHẬP:", options=allowed_khos)
 with col4:
-    if 'Client_ID' in df.columns:
+    if 'ClientName' in df.columns:
+        clients = st.multiselect("🎯 BỘ LỌC KHÁCH HÀNG:", options=df['ClientName'].dropna().unique())
+    elif 'Client_ID' in df.columns:
         clients = st.multiselect("🎯 BỘ LỌC KHÁCH HÀNG:", options=df['Client_ID'].dropna().unique())
     else:
         clients = []
@@ -176,8 +178,11 @@ elif kho_nhap_filter == 'B2B Hưng Yên':
     if 'KhoNhap' in df_filtered.columns:
         df_filtered = df_filtered[df_filtered['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)]
 
-if clients and 'Client_ID' in df_filtered.columns:
-    df_filtered = df_filtered[df_filtered['Client_ID'].isin(clients)]
+if clients:
+    if 'ClientName' in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered['ClientName'].isin(clients)]
+    elif 'Client_ID' in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered['Client_ID'].isin(clients)]
 
 def get_period(dt_series, f):
     if f == 'D': return dt_series.dt.to_period('D').dt.start_time
