@@ -296,8 +296,15 @@ with tab1:
                 else:
                     st.info("Không có dữ liệu cho biểu đồ nguồn nhập.")
                     
-    def render_warehouse_tab(df_wh, wh_name):
-        st.subheader(f"CHI TIẾT KHO {wh_name}")
+    def render_warehouse_tab(df_wh_full, wh_name):
+        latest_period_str = ""
+        df_wh = df_wh_full
+        if 'Period' in df_wh_full.columns and not df_wh_full.empty:
+            max_period = df_wh_full['Period'].max()
+            df_wh = df_wh_full[df_wh_full['Period'] == max_period]
+            latest_period_str = df_wh['Period_Str'].iloc[0] if 'Period_Str' in df_wh.columns else ""
+            
+        st.subheader(f"CHI TIẾT KHO {wh_name}" + (f" (Kỳ gần nhất: {latest_period_str})" if latest_period_str else ""))
         if df_wh.empty:
             st.info(f"Không có dữ liệu cho kho {wh_name}")
             return
@@ -323,9 +330,9 @@ with tab1:
             c2.metric("Tự lấy", f"{tu_lay_kg:,.0f} kg")
             c3.metric("Nhập từ kho khác", f"{khac_kg:,.0f} kg")
             
-        if 'NguonNhap' in df_wh.columns and 'Period_Str' in df_wh.columns:
-            df_wh['Ngày'] = df_wh['Period_Str']
-            grouped_wh_nguon = df_wh.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+        if 'NguonNhap' in df_wh_full.columns and 'Period_Str' in df_wh_full.columns:
+            df_wh_full['Ngày'] = df_wh_full['Period_Str']
+            grouped_wh_nguon = df_wh_full.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
             if not grouped_wh_nguon.empty:
                 y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
                 fig_wh_nguon = px.bar(grouped_wh_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title=f"Sản lượng nhập theo thời gian", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
