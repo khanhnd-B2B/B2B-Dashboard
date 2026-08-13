@@ -368,9 +368,9 @@ with tab1:
                     
         col_tbl1, col_tbl2 = st.columns(2)
         with col_tbl1:
-            st.markdown("**Chi tiết theo Client_ID**")
-            if 'Client_ID' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaDonGoc' in df_wh.columns:
-                tbl_client = df_wh.groupby('Client_ID').agg(
+            st.markdown("**Chi tiết theo Tên Khách Hàng**")
+            if 'ClientName' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaDonGoc' in df_wh.columns:
+                tbl_client = df_wh.groupby('ClientName').agg(
                     Số_đơn=('MaDonGoc', 'nunique'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
                 ).reset_index().sort_values('Số_đơn', ascending=False)
@@ -516,14 +516,6 @@ with tab2:
         with sub3:
             render_ontime_wh(df_ot_hy, "B2B HƯNG YÊN")
             
-        with st.expander("❌ XEM CHI TIẾT ĐƠN XUẤT LATE (CHƯA XUẤT HOẶC XUẤT TRỄ)"):
-            late_orders = df_ot[~df_ot['Ontime']].copy()
-            if not late_orders.empty:
-                cols_late = ['NgayNhap', 'KhoNhap', 'MaDonGoc', 'ThoiGianNhap', 'DeadlineXuat', 'DaXuat', 'ThoiGianXuat']
-                cols_late = [c for c in cols_late if c in late_orders.columns]
-                st.dataframe(late_orders[cols_late].sort_values('NgayNhap', ascending=False), use_container_width=True)
-            else:
-                st.success("Tuyệt vời! Không có đơn nào xuất trễ.")
     else:
         st.info("Không đủ dữ liệu hoặc thiếu cột cần thiết để tính Ontime.")
 
@@ -533,11 +525,17 @@ with tab3:
     st.header("BÁO CÁO GIAO TRONG NGÀY - SAMEDAY (CONCUNG)")
     st.markdown("Quy định: Đơn Concung **lấy thành công** tại HN, Bắc Ninh, Hải Dương, Hưng Yên phải **giao thành công trong cùng ngày lấy**.")
 
-    client_name_col = next((c for c in df_filtered.columns if c.lower() == 'client_name'), None)
+    client_name_col = next((c for c in df_filtered.columns if c.lower() in ['client_name', 'clientname']), None)
     if client_name_col:
         df_concung = df_filtered[df_filtered[client_name_col].str.contains('Concung|Con Cưng', case=False, na=False)].copy()
     else:
-        df_concung = pd.DataFrame()
+        df_concung = df_filtered.head(0).copy()
+        
+    if 'TinhGiao' not in df_concung.columns:
+        df_concung['TinhGiao'] = None
+    if 'ThoiGianLayThanhCong' not in df_concung.columns:
+        df_concung['ThoiGianLayThanhCong'] = pd.NaT
+        
     tinh_giao_hop_le = ['Hà Nội', 'Hưng Yên', 'Bắc Ninh', 'Hải Dương']
     df_concung = df_concung[df_concung['TinhGiao'].isin(tinh_giao_hop_le)]
     # Chỉ tính đơn đã lấy thành công
