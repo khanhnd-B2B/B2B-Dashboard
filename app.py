@@ -19,9 +19,20 @@ REDIRECT_URI = st.secrets.get("REDIRECT_URI", "https://b2b-dashboard-dsgkivhypxm
 ALLOWED_EMAILS = [e.strip().lower() for e in st.secrets.get("ALLOWED_EMAILS", "").split(",") if e.strip()]
 ADMIN_EMAILS = [e.strip().lower() for e in st.secrets.get("ADMIN_EMAILS", "admin@ghn.vn").split(",") if e.strip()]
 
+from streamlit_cookies_controller import CookieController
+controller = CookieController()
+
 def require_login():
+    if "authenticated" not in st.session_state:
+        cookie_email = controller.get("ghn_b2b_email")
+        if cookie_email:
+            st.session_state["authenticated"] = True
+            st.session_state["user_email"] = cookie_email
+            return True
+
     if st.session_state.get("authenticated", False):
         return True
+    
     st.markdown("<h3 style='text-align: center; color: #ff4b4b;'>BẢO MẬT HỆ THỐNG GHN B2B</h3>", unsafe_allow_html=True)
     query_params = st.query_params
     code = query_params.get("code")
@@ -38,8 +49,11 @@ def require_login():
                 if email.endswith("@ghn.vn") or email in ALLOWED_EMAILS:
                     st.session_state["authenticated"] = True
                     st.session_state["user_email"] = email
+                    # Lưu cookie trong 30 ngày (86400 * 30 = 2592000 giây)
+                    controller.set("ghn_b2b_email", email, max_age=2592000)
                     st.query_params.clear()
                     st.rerun()
+
                 else:
                     st.error(f"❌ Truy cập bị từ chối. Email '{email}' không có quyền truy cập.")
                     st.query_params.clear()
@@ -120,7 +134,20 @@ with col2:
         max_date = datetime.today().date()
     date_range = st.date_input("📅 TỪ NGÀY - ĐẾN NGÀY:", value=(min_date, max_date))
 with col3:
-    kho_nhap_filter = st.selectbox("🏭 KHO NHẬP:", options=['Tất cả', 'B2B Đài Tư', 'B2B Hưng Yên'])
+    user_email = st.session_state.get("user_email", "")
+    allowed_khos = ['Tất cả', 'B2B Đài Tư', 'B2B Hưng Yên']
+    
+    try:
+        if "rbac" in st.secrets:
+            user_role = st.secrets["rbac"].get(user_email)
+            if user_role == "B2B Đài Tư":
+                allowed_khos = ['B2B Đài Tư']
+            elif user_role == "B2B Hưng Yên":
+                allowed_khos = ['B2B Hưng Yên']
+    except Exception:
+        pass
+        
+    kho_nhap_filter = st.selectbox("🏭 KHO NHẬP:", options=allowed_khos)
 with col4:
     if 'Client_ID' in df.columns:
         clients = st.multiselect("🎯 BỘ LỌC KHÁCH HÀNG:", options=df['Client_ID'].dropna().unique())
