@@ -549,10 +549,13 @@ with tab3:
 
     def check_giao_trong_ngay_lay(row):
         """Đơn lấy trong ngày phải giao xong trong ngày"""
-        if pd.isna(row['ThoiGianGiaoThanhCong']): return False
+        if pd.isna(row.get('ThoiGianGiaoThanhCong')): return False
         return row['ThoiGianGiaoThanhCong'].date() == row['NgayLay_DT']
 
-    df_concung['GiaoTrongNgayLay'] = df_concung.apply(check_giao_trong_ngay_lay, axis=1)
+    if not df_concung.empty:
+        df_concung['GiaoTrongNgayLay'] = df_concung.apply(check_giao_trong_ngay_lay, axis=1)
+    else:
+        df_concung['GiaoTrongNgayLay'] = False
 
     # Tính Period cho Concung
     df_concung['Period'] = get_period(df_concung['ThoiGianLayThanhCong'], freq)
