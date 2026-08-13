@@ -542,6 +542,7 @@ with tab3:
     df_concung = df_concung.dropna(subset=['ThoiGianLayThanhCong'])
 
     # Lọc bỏ ngày N (hôm nay)
+    today = pd.Timestamp.today().date()
     df_concung = df_concung[df_concung['ThoiGianLayThanhCong'].dt.date < today]
 
     df_concung['NgayLay_DT'] = df_concung['ThoiGianLayThanhCong'].dt.date
