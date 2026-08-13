@@ -401,16 +401,14 @@ with tab2:
         today_date = pd.to_datetime('today').normalize()
         df_ot = df_ot[pd.to_datetime(df_ot['NgayNhap']).dt.normalize() < today_date]
         
-    if 'KhoGiao' in df_ot.columns:
-        df_ot = df_ot[~df_ot['KhoGiao'].fillna('').str.contains('Đài Tư', case=False)]
-    
     # Loại bỏ đơn có KhoLay = KhoGiao
     if 'KhoLay_ID' in df_ot.columns and 'KhoGiao_ID' in df_ot.columns:
         df_ot = df_ot[df_ot['KhoLay_ID'] != df_ot['KhoGiao_ID']]
         
-    # Loại bỏ đơn kho giao là kho hiện tại
-    if 'KhoGiao_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns:
-        df_ot = df_ot[df_ot['KhoGiao_ID'] != df_ot['KhoHienTai_ID']]
+    # Loại bỏ đơn kho giao là kho hiện tại (chỉ áp dụng với Đài Tư và Hưng Yên)
+    if 'KhoGiao_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns and 'KhoHienTai' in df_ot.columns:
+        cond_exclude = (df_ot['KhoGiao_ID'] == df_ot['KhoHienTai_ID']) & (df_ot['KhoHienTai'].str.contains('Đài Tư|Hưng Yên', case=False, na=False))
+        df_ot = df_ot[~cond_exclude]
         
     if not df_ot.empty and 'ThoiGianNhap' in df_ot.columns and 'KhoNhap_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns:
         df_ot['DeadlineXuat'] = df_ot['ThoiGianNhap'] + pd.Timedelta(hours=24)
