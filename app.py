@@ -386,31 +386,24 @@ with tab2:
     if 'KhoGiao' in df_ot.columns:
         df_ot = df_ot[~df_ot['KhoGiao'].fillna('').str.contains('Đài Tư', case=False)]
     
-    # Loại bỏ đơn có KhoLay = KhoGiao (đơn giao tại chính kho lấy)
+    # Loại bỏ đơn có KhoLay = KhoGiao
     if 'KhoLay_ID' in df_ot.columns and 'KhoGiao_ID' in df_ot.columns:
         df_ot = df_ot[df_ot['KhoLay_ID'] != df_ot['KhoGiao_ID']]
         
-    if not df_ot.empty and 'ThoiGianNhap' in df_ot.columns and 'KhoNhap_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns and 'TrangThaiViTriInside' in df_ot.columns and 'InsideThaoTacGanNhat' in df_ot.columns and 'InsideThoiGianGanNhat' in df_ot.columns:
-        df_ot['GioNhap'] = df_ot['ThoiGianNhap'].dt.hour
-        base_date = pd.to_datetime(df_ot['NgayNhap']).dt.normalize()
+    # Loại bỏ đơn kho giao là kho hiện tại
+    if 'KhoGiao_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns:
+        df_ot = df_ot[df_ot['KhoGiao_ID'] != df_ot['KhoHienTai_ID']]
         
-        df_ot['DeadlineXuat'] = np.where(
-            df_ot['GioNhap'] < 20,
-            base_date + pd.Timedelta(days=1, hours=6),
-            base_date + pd.Timedelta(days=1, hours=20)
-        )
+    if not df_ot.empty and 'ThoiGianNhap' in df_ot.columns and 'KhoNhap_ID' in df_ot.columns and 'KhoHienTai_ID' in df_ot.columns and 'TrangThaiViTriInside' in df_ot.columns and 'InsideThaoTacGanNhat' in df_ot.columns and 'InsideThoiGianGanNhat' in df_ot.columns:
+        df_ot['DeadlineXuat'] = df_ot['ThoiGianNhap'] + pd.Timedelta(hours=24)
         
         is_exported = (df_ot['KhoHienTai_ID'] != df_ot['KhoNhap_ID']) | (df_ot['TrangThaiViTriInside'] == 'Đã xuất khỏi kho thao tác gần nhất')
         df_ot['DaXuat'] = is_exported
         
-        export_time = np.where(
-            df_ot['InsideThaoTacGanNhat'] == 'export',
-            df_ot['InsideThoiGianGanNhat'],
-            df_ot['InsideThoiGianGanNhat']
-        )
-        df_ot['ThoiGianXuat'] = pd.to_datetime(export_time)
+        df_ot['ThoiGianXuat'] = pd.to_datetime(df_ot['InsideThoiGianGanNhat'])
+        now = pd.Timestamp.now()
         
-        df_ot['Ontime'] = df_ot['DaXuat'] & (df_ot['ThoiGianXuat'] <= df_ot['DeadlineXuat'])
+        df_ot['Ontime'] = (df_ot['DaXuat'] & (df_ot['ThoiGianXuat'] <= df_ot['DeadlineXuat'])) | (~df_ot['DaXuat'] & (now <= df_ot['DeadlineXuat']))
         
         total_ot = len(df_ot)
         ontime_count = df_ot['Ontime'].sum()
