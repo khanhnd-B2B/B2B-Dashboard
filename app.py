@@ -562,7 +562,7 @@ with tab3:
     df_concung['Period_Str'] = get_period_str(df_concung['ThoiGianLayThanhCong'], freq)
 
     concung_summary = df_concung.groupby(['Period', 'Period_Str']).agg(
-        TongDonLay=('order_code', 'count'),
+        TongDonLay=('MaDonGoc', 'count'),
         DonGiaoTrongNgay=('GiaoTrongNgayLay', 'sum')
     ).reset_index()
 
@@ -624,7 +624,7 @@ with tab3:
 
     with st.expander("XEM CHI TIẾT ĐƠN CHƯA GIAO TRONG NGÀY"):
         not_delivered = df_concung[~df_concung['GiaoTrongNgayLay']]
-        cols_cc = ['order_code', 'TinhGiao', 'TrangThaiHienTai', 'ThoiGianLayThanhCong', 'ThoiGianGiaoThanhCong']
+        cols_cc = ['MaDonGoc', 'TinhGiao', 'TrangThai', 'ThoiGianLayThanhCong', 'ThoiGianGiaoThanhCong']
         cols_cc = [c for c in cols_cc if c in not_delivered.columns]
         st.dataframe(not_delivered[cols_cc])
 
