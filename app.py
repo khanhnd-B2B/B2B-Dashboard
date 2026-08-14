@@ -229,19 +229,14 @@ with tab1:
 
     st.markdown("<h3 style='color: #004b8b; text-decoration: underline;'>A. Overview</h3>", unsafe_allow_html=True)
     
-    if 'ThoiGianLayThanhCong' in df_filtered.columns and 'ThoiGianTao' in df_filtered.columns:
-        df_filtered['Leadtime_Lay_Tao'] = (df_filtered['ThoiGianLayThanhCong'] - df_filtered['ThoiGianTao']).dt.total_seconds() / 3600
-        
     if 'NgayNhap' in df_filtered.columns and not df_filtered.empty:
         df_ltc = df_filtered[df_filtered['ThoiGianLayThanhCong'].notna()] if 'ThoiGianLayThanhCong' in df_filtered.columns else df_filtered
         ltc_counts = df_ltc.groupby('Period_Str')['MaDonGoc'].nunique() if 'MaDonGoc' in df_ltc.columns else df_ltc.groupby('Period_Str').size()
         kg_sums = df_filtered.groupby('Period_Str')['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_filtered.columns else pd.Series(dtype=float)
-        leadtime_means = df_filtered.groupby('Period_Str')['Leadtime_Lay_Tao'].mean() if 'Leadtime_Lay_Tao' in df_filtered.columns else pd.Series(dtype=float)
         
         overview_group = pd.DataFrame({
             'Tổng đơn LTC': ltc_counts,
-            'Tổng khối lượng (KG)': kg_sums,
-            'Leadtime Lấy - Tạo (hour)': leadtime_means
+            'Tổng khối lượng (KG)': kg_sums
         }).fillna(0)
         
         period_map = df_filtered.set_index('Period_Str')['Period'].to_dict()
