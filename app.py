@@ -105,6 +105,9 @@ def load_data():
             return pd.DataFrame(), "Không tìm thấy dữ liệu"
             
     if not df.empty:
+        if 'MaDonGoc' in df.columns:
+            df = df.drop_duplicates(subset=['MaDonGoc'], keep='last')
+            
         dt_columns = ['ThoiGianNhap', 'InsideThoiGianGanNhat', 'NgayNhap', 'ThoiGianXuatKien']
         for col in dt_columns:
             if col in df.columns:
