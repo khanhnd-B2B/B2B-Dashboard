@@ -250,8 +250,7 @@ with tab1:
         for col in overview_group.columns:
             overview_group[col] = [
                 f"{overview_group.loc['Tổng đơn LTC', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Tổng khối lượng (KG)', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Leadtime Lấy - Tạo (hour)', col]:,.2f}".replace('.', ',')
+                f"{overview_group.loc['Tổng khối lượng (KG)', col]:,.0f}".replace(',', '.')
             ]
             
         st.dataframe(overview_group, use_container_width=True)
