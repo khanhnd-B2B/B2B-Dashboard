@@ -88,7 +88,7 @@ def load_data():
         pass
         
     if df.empty:
-        local_file = 'Data B2B moi 1408.1.xlsx'
+        local_file = 'Data B2B Master.xlsx'
         if os.path.exists(local_file):
             try:
                 df = pd.read_excel(local_file)
