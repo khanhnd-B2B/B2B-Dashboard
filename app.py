@@ -112,6 +112,11 @@ def load_data():
         for col in dt_columns:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce').dt.tz_localize(None)
+                
+        if 'KhoiLuongKG' in df.columns:
+            df['KhoiLuongKG'] = pd.to_numeric(df['KhoiLuongKG'], errors='coerce').fillna(0)
+        if 'Client_ID' in df.columns:
+            df['Client_ID'] = pd.to_numeric(df['Client_ID'], errors='coerce')
     return df, source_used
 
 df_raw, master_file_path = load_data()
