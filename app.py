@@ -259,10 +259,10 @@ with tab1:
 
         overview_group = pd.DataFrame({
             'Tổng đơn': ltc_counts,
-            'Số đơn tự lấy': tu_lay_counts,
-            'Số đơn nhập về': nhap_ve_counts,
             'Tổng khối lượng (KG)': kg_sums,
+            'Số đơn tự lấy': tu_lay_counts,
             'Số KG tự lấy': tu_lay_kg,
+            'Số đơn nhập về': nhap_ve_counts,
             'Số KG nhập về': nhap_ve_kg
         }).fillna(0)
         
@@ -274,10 +274,10 @@ with tab1:
         for col in overview_group.columns:
             overview_group[col] = [
                 f"{overview_group.loc['Tổng đơn', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Số đơn tự lấy', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Số đơn nhập về', col]:,.0f}".replace(',', '.'),
                 f"{overview_group.loc['Tổng khối lượng (KG)', col]:,.0f}".replace(',', '.'),
+                f"{overview_group.loc['Số đơn tự lấy', col]:,.0f}".replace(',', '.'),
                 f"{overview_group.loc['Số KG tự lấy', col]:,.0f}".replace(',', '.'),
+                f"{overview_group.loc['Số đơn nhập về', col]:,.0f}".replace(',', '.'),
                 f"{overview_group.loc['Số KG nhập về', col]:,.0f}".replace(',', '.')
             ]
             
