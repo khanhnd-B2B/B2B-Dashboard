@@ -239,12 +239,31 @@ with tab1:
     
     if 'NgayNhap' in df_filtered.columns and not df_filtered.empty:
         df_ltc = df_filtered[df_filtered['ThoiGianLayThanhCong'].notna()] if 'ThoiGianLayThanhCong' in df_filtered.columns else df_filtered
+        
         ltc_counts = df_ltc.groupby('Period_Str')['MaDonGoc'].nunique() if 'MaDonGoc' in df_ltc.columns else df_ltc.groupby('Period_Str').size()
         kg_sums = df_filtered.groupby('Period_Str')['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_filtered.columns else pd.Series(dtype=float)
         
+        if 'NguonNhap' in df_filtered.columns:
+            df_tu_lay = df_filtered[df_filtered['NguonNhap'].str.contains('Tự', case=False, na=False)]
+            tu_lay_counts = df_tu_lay.groupby('Period_Str')['MaDonGoc'].nunique() if 'MaDonGoc' in df_tu_lay.columns else df_tu_lay.groupby('Period_Str').size()
+            tu_lay_kg = df_tu_lay.groupby('Period_Str')['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_tu_lay.columns else pd.Series(dtype=float)
+            
+            df_nhap_ve = df_filtered[df_filtered['NguonNhap'].str.contains('Nhập', case=False, na=False)]
+            nhap_ve_counts = df_nhap_ve.groupby('Period_Str')['MaDonGoc'].nunique() if 'MaDonGoc' in df_nhap_ve.columns else df_nhap_ve.groupby('Period_Str').size()
+            nhap_ve_kg = df_nhap_ve.groupby('Period_Str')['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_nhap_ve.columns else pd.Series(dtype=float)
+        else:
+            tu_lay_counts = pd.Series(dtype=float)
+            nhap_ve_counts = pd.Series(dtype=float)
+            tu_lay_kg = pd.Series(dtype=float)
+            nhap_ve_kg = pd.Series(dtype=float)
+
         overview_group = pd.DataFrame({
-            'Tổng đơn LTC': ltc_counts,
-            'Tổng khối lượng (KG)': kg_sums
+            'Tổng đơn': ltc_counts,
+            'Số đơn tự lấy': tu_lay_counts,
+            'Số đơn nhập về': nhap_ve_counts,
+            'Tổng khối lượng (KG)': kg_sums,
+            'Số KG tự lấy': tu_lay_kg,
+            'Số KG nhập về': nhap_ve_kg
         }).fillna(0)
         
         period_map = df_filtered.set_index('Period_Str')['Period'].to_dict()
@@ -254,8 +273,12 @@ with tab1:
         
         for col in overview_group.columns:
             overview_group[col] = [
-                f"{overview_group.loc['Tổng đơn LTC', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Tổng khối lượng (KG)', col]:,.0f}".replace(',', '.')
+                f"{overview_group.loc['Tổng đơn', col]:,.0f}".replace(',', '.'),
+                f"{overview_group.loc['Số đơn tự lấy', col]:,.0f}".replace(',', '.'),
+                f"{overview_group.loc['Số đơn nhập về', col]:,.0f}".replace(',', '.'),
+                f"{overview_group.loc['Tổng khối lượng (KG)', col]:,.0f}".replace(',', '.'),
+                f"{overview_group.loc['Số KG tự lấy', col]:,.0f}".replace(',', '.'),
+                f"{overview_group.loc['Số KG nhập về', col]:,.0f}".replace(',', '.')
             ]
             
         st.dataframe(overview_group, use_container_width=True)
