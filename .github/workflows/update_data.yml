@@ -1,10 +1,10 @@
-name: Auto Update Data
+name: Auto Update B2B Data
 
 on:
   schedule:
-    # Chạy mỗi 4 tiếng (theo giờ UTC, GitHub Actions dùng giờ UTC)
-    - cron: '0 */4 * * *'
-  workflow_dispatch: # Cho phép bấm chạy thủ công trên GitHub
+    # 08:30 AM Vietnam time (UTC+7) = 01:30 AM UTC
+    - cron: '30 1 * * *'
+  workflow_dispatch: # Cho phep bam chay thu cong tren GitHub
 
 jobs:
   update-data:
@@ -18,24 +18,31 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas
+          pip install pandas openpyxl google-api-python-client google-auth-httplib2 google-auth-oauthlib requests
 
-      - name: Run fetch_data.py
-        run: python fetch_data.py
+      - name: Create token.json from secret
+        env:
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
+        run: |
+          if [ -n "$GOOGLE_TOKEN" ]; then
+            echo "$GOOGLE_TOKEN" > token.json
+          fi
+
+      - name: Run daily_update.py
+        run: python daily_update.py
 
       - name: Commit and push changes
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add master_data.csv
-          git status
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add "Data B2B Master.xlsx"
           if ! git diff --staged --quiet; then
-            git commit -m "Auto-update data from Google Sheets"
+            git commit -m "Auto-update data from Google Sheets [skip ci]"
             git push origin HEAD:main
           else
             echo "No changes to commit"
