@@ -47,3 +47,14 @@ jobs:
           else
             echo "No changes to commit"
           fi
+
+      - name: Send Daily Telegram Report
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python send_telegram.py
+
+      - name: Ping Streamlit Dashboard (Keep Awake)
+        run: |
+          curl -sL https://b2b-dashboard-hydt.streamlit.app > /dev/null || true
+          echo "Streamlit dashboard pinged."
