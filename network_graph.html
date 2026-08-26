@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network B2B — Sơ Đồ Tuyến Trung Chuyển</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: #f4f6f9;
+      color: #333;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header Bar */
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid #e1e4e8;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .header-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #0b2239;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-title i {
+      color: #008848;
+    }
+
+    .hub-select {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #ced4da;
+      background: #f8f9fa;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e3a8a;
+      cursor: pointer;
+      outline: none;
+    }
+
+    .hub-select:focus {
+      border-color: #008848;
+    }
+
+    /* Controls Bar */
+    .controls-bar {
+      background: #fafbfc;
+      border-bottom: 1px solid #e1e4e8;
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+
+    .controls-left, .controls-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn {
+      padding: 5px 12px;
+      border-radius: 5px;
+      border: 1px solid #d0d7de;
+      background: #ffffff;
+      color: #24292f;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      background: #f3f4f6;
+      border-color: #1b1f2426;
+    }
+
+    .btn-primary {
+      background: #008848;
+      color: white;
+      border-color: #00733d;
+    }
+
+    .btn-primary:hover {
+      background: #00733d;
+    }
+
+    .btn-accent {
+      background: #0969da;
+      color: white;
+      border-color: #0860ca;
+    }
+
+    .btn-accent:hover {
+      background: #0860ca;
+    }
+
+    .search-box {
+      position: relative;
+      width: 280px;
+    }
+
+    .search-box input {
+      width: 100%;
+      padding: 5px 10px 5px 28px;
+      border-radius: 5px;
+      border: 1px solid #d0d7de;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .search-box i {
+      position: absolute;
+      left: 9px;
+      top: 7px;
+      color: #8c959f;
+      font-size: 12px;
+    }
+
+    .stats-badge {
+      padding: 3px 8px;
+      background: #e6f4ea;
+      color: #137333;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* Main Canvas Area */
+    #graph-container {
+      flex: 1;
+      position: relative;
+      background: #f8fafc;
+      overflow: hidden;
+      cursor: grab;
+    }
+
+    #graph-container:active {
+      cursor: grabbing;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Node Cards Styling */
+    .node-group {
+      cursor: pointer;
+    }
+
+    .node-card {
+      transition: all 0.2s ease;
+    }
+
+    .node-card rect.card-bg {
+      fill: #ffffff;
+      stroke: #d0d7de;
+      stroke-width: 1.5;
+      rx: 6px;
+      ry: 6px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.06));
+    }
+
+    .node-group:hover rect.card-bg {
+      stroke: #0969da;
+      stroke-width: 2;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.12));
+    }
+
+    .node-group.root rect.card-bg {
+      fill: #008848;
+      stroke: #006636;
+    }
+
+    .node-group.hub rect.card-bg {
+      fill: #f0fdf4;
+      stroke: #16a34a;
+    }
+
+    .node-group.branch rect.card-bg {
+      fill: #ffffff;
+      stroke: #0284c7;
+    }
+
+    .node-group.leaf rect.card-bg {
+      fill: #ffffff;
+      stroke: #e2e8f0;
+    }
+
+    .node-group.highlight rect.card-bg {
+      stroke: #e11d48 !important;
+      stroke-width: 2.5 !important;
+      fill: #fff1f2 !important;
+    }
+
+    .node-title {
+      font-size: 12px;
+      font-weight: 600;
+      fill: #1e293b;
+    }
+
+    .node-group.root .node-title {
+      fill: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .node-group.hub .node-title {
+      fill: #15803d;
+      font-weight: 700;
+    }
+
+    .node-subtitle {
+      font-size: 10px;
+      fill: #64748b;
+    }
+
+    .node-group.root .node-subtitle {
+      fill: #dcfce7;
+    }
+
+    /* Links / Connectors */
+    .link-path {
+      fill: none;
+      stroke: #94a3b8;
+      stroke-width: 2px;
+      transition: stroke 0.2s, stroke-width 0.2s;
+    }
+
+    .link-path.highlight {
+      stroke: #e11d48;
+      stroke-width: 3px;
+    }
+
+    /* Toggle Button (+ / -) */
+    .toggle-btn circle {
+      fill: #ffffff;
+      stroke: #0284c7;
+      stroke-width: 1.5;
+      cursor: pointer;
+    }
+
+    .toggle-btn text {
+      font-size: 11px;
+      font-weight: bold;
+      fill: #0284c7;
+      text-anchor: middle;
+      dominant-baseline: central;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-btn:hover circle {
+      fill: #0284c7;
+    }
+
+    .toggle-btn:hover text {
+      fill: #ffffff;
+    }
+
+    /* Context Menu / Edit Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      width: 420px;
+      max-width: 90%;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 15px;
+      color: #1e293b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #475569;
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 5px;
+      border: 1px solid #cbd5e1;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      border-color: #008848;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    /* Node action tooltip */
+    .node-action-btn {
+      cursor: pointer;
+      fill: #64748b;
+      transition: fill 0.2s;
+    }
+
+    .node-action-btn:hover {
+      fill: #0969da;
+    }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #1e293b;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      z-index: 200;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header Bar -->
+  <header>
+    <div class="header-left">
+      <div class="header-title">
+        <i class="fa-solid fa-network-wired"></i>
+        <span>Network B2B — Sơ Đồ Mạng Lưới Phân Cấp</span>
+      </div>
+      <select id="hubSelector" class="hub-select" onchange="switchRootHub(this.value)">
+        <option value="hy">Kho B2B Hưng Yên (HY01)</option>
+        <option value="hn">Kho B2B Hà Nội — Đài Tư (HN02)</option>
+        <option value="hcm">Kho Trung Chuyển Củ Chi TP HCM (HCM01)</option>
+        <option value="master">Toàn Bộ Mạng Lưới B2B Toàn Quốc</option>
+      </select>
+    </div>
+
+    <div class="header-right">
+      <span class="stats-badge" id="nodeCountBadge"><i class="fa-solid fa-circle-nodes"></i> Đang tải...</span>
+    </div>
+  </header>
+
+  <!-- Controls Bar -->
+  <div class="controls-bar">
+    <div class="controls-left">
+      <button class="btn" onclick="expandAll()"><i class="fa-solid fa-folder-open"></i> Mở hết</button>
+      <button class="btn" onclick="collapseAll()"><i class="fa-solid fa-folder-closed"></i> Thu gọn</button>
+      <button class="btn" onclick="resetZoom()"><i class="fa-solid fa-compress"></i> 100%</button>
+      <button class="btn" onclick="zoomIn()"><i class="fa-solid fa-plus"></i></button>
+      <button class="btn" onclick="zoomOut()"><i class="fa-solid fa-minus"></i></button>
+      
+      <div class="search-box">
+        <i class="fa-solid fa-search"></i>
+        <input type="text" id="searchInput" placeholder="Tìm tên kho / bưu cục / mã tỉnh..." oninput="handleSearch(this.value)">
+      </div>
+    </div>
+
+    <div class="controls-right">
+      <button class="btn btn-primary" onclick="openAddModal()"><i class="fa-solid fa-plus-circle"></i> Thêm Điểm / Tuyến Mới</button>
+      <button class="btn" onclick="exportJSON()"><i class="fa-solid fa-download"></i> Xuất Cấu Hình (JSON)</button>
+      <button class="btn" onclick="document.getElementById('importFileInput').click()"><i class="fa-solid fa-upload"></i> Nhập JSON</button>
+      <input type="file" id="importFileInput" style="display:none" accept=".json" onchange="importJSON(event)">
+      <button class="btn" onclick="resetToDefault()"><i class="fa-solid fa-rotate-left"></i> Khôi phục mẫu gốc</button>
+    </div>
+  </div>
+
+  <!-- Graph Container -->
+  <div id="graph-container">
+    <svg id="networkSvg">
+      <g id="mainGroup"></g>
+    </svg>
+  </div>
+
+  <!-- Modal: Add / Edit Node -->
+  <div class="modal-overlay" id="nodeModal">
+    <div class="modal-content">
+      <div class="modal-title" id="modalTitle">
+        <i class="fa-solid fa-pen-to-square"></i>
+        <span>Thông Tin Điểm Giao / Hub</span>
+      </div>
+      
+      <div class="form-group">
+        <label>Thuộc Kho / Hub Cha:</label>
+        <select id="modalParentSelect"></select>
+      </div>
+
+      <div class="form-group">
+        <label>Tên Kho / Bưu Cục:</label>
+        <input type="text" id="modalNodeName" placeholder="VD: Kho Chuyển Tiếp Thái Nguyên hoặc (QNI) Cẩm Phả">
+      </div>
+
+      <div class="form-group">
+        <label>Loại Điểm:</label>
+        <select id="modalNodeType">
+          <option value="hub">Kho Trung Chuyển (KTC) / Chuyển Tiếp (KCT)</option>
+          <option value="branch">Kho Giao Hàng Nặng (KGHN)</option>
+          <option value="leaf">Bưu Cục / Điểm Giao Cuối</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Ghi chú / Tỉnh thành / Mã vùng:</label>
+        <input type="text" id="modalNodeNote" placeholder="VD: Quảng Ninh, Miền Bắc, Tuyến 6 tỉnh...">
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" onclick="saveNodeModal()">Lưu lại</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ==================== DEFAULT DATA STRUCTURE ====================
+    const DEFAULT_NETWORKS = {
+      hy: {
+        id: "root_hy",
+        name: "Kho B2B Hưng Yên (HY01)",
+        type: "root",
+        note: "Hub Nguồn Miền Bắc",
+        children: [
+          {
+            id: "kct_thainguyen",
+            name: "Kho Chuyển Tiếp Bích Quang Thái Nguyên",
+            type: "hub",
+            note: "Thái Nguyên & Cao Bằng, Bắc Kạn",
+            children: [
+              { id: "cba_thucphan", name: "(CBA) Thục Phán", type: "leaf", note: "Cao Bằng" },
+              { id: "cba_hoaan", name: "(CBA) Hóa An", type: "leaf", note: "Cao Bằng" },
+              { id: "thn_daiphuc", name: "(THN) Đại Phúc", type: "leaf", note: "Thái Nguyên" },
+              { id: "cba_trangkhanh", name: "(CBA) Tràng Khánh", type: "leaf", note: "Cao Bằng" },
+              { id: "bka_ducxuan", name: "(BKA) Đức Xuân", type: "leaf", note: "Bắc Kạn" },
+              { id: "cba_quanguyen", name: "(CBA) Quảng Uyên", type: "leaf", note: "Cao Bằng" },
+              { id: "qni_mongcai1", name: "(QNI) Móng Cái 1", type: "leaf", note: "Quảng Ninh" }
+            ]
+          },
+          {
+            id: "kct_quangninh",
+            name: "Kho Chuyển Tiếp Quảng Ninh",
+            type: "hub",
+            note: "Quảng Ninh",
+            children: [
+              { id: "qni_hoanhbo", name: "(QNI) Hoành Bồ", type: "leaf", note: "Quảng Ninh" },
+              { id: "qni_tienyen", name: "(QNI) Tiên Yên", type: "leaf", note: "Quảng Ninh" },
+              { id: "qni_vandon", name: "(QNI) Vân Đồn", type: "leaf", note: "Quảng Ninh" },
+              { id: "qni_quangha", name: "(QNI) Quảng Hà", type: "leaf", note: "Quảng Ninh" },
+              { id: "qni_damha", name: "(QNI) Đầm Hà", type: "leaf", note: "Quảng Ninh" }
+            ]
+          },
+          {
+            id: "kct_langson",
+            name: "Kho Chuyển Tiếp Lạng Sơn",
+            type: "hub",
+            note: "Lạng Sơn",
+            children: [
+              { id: "lso_bacson", name: "(LSO) Bắc Sơn", type: "leaf", note: "Lạng Sơn" },
+              { id: "lso_dongdang", name: "(LSO) Đồng Đăng", type: "leaf", note: "Lạng Sơn" },
+              { id: "lso_chilang", name: "(LSO) Chi Lăng", type: "leaf", note: "Lạng Sơn" },
+              { id: "lso_nasam", name: "(LSO) Na Sầm", type: "leaf", note: "Lạng Sơn" },
+              { id: "lso_locbinh", name: "(LSO) Lộc Bình", type: "leaf", note: "Lạng Sơn" },
+              { id: "lso_tamthanh", name: "(LSO) Tam Thanh", type: "leaf", note: "Lạng Sơn" }
+            ]
+          },
+          {
+            id: "kct_phutho",
+            name: "Kho Chuyển Tiếp Phú Thọ 01",
+            type: "hub",
+            note: "Phú Thọ",
+            children: [
+              { id: "pth_tanson", name: "(PTH) Tân Sơn", type: "leaf", note: "Phú Thọ" },
+              { id: "pth_viettri", name: "Kho Giao Hàng Nặng - Việt Trì - Phú Thọ", type: "branch", note: "Phú Thọ" }
+            ]
+          },
+          {
+            id: "kct_bacgiang",
+            name: "Kho Chuyển Tiếp Bắc Giang",
+            type: "hub",
+            note: "Bắc Giang",
+            children: [
+              { id: "bgi_vietyen", name: "Kho Giao Hàng Nặng - Việt Yên - Bắc Giang", type: "branch", note: "Bắc Giang" },
+              { id: "bgi_lucnam", name: "(BGI) Lục Nam", type: "leaf", note: "Bắc Giang" },
+              { id: "bgi_chu", name: "(BGI) Chũ", type: "leaf", note: "Bắc Giang" }
+            ]
+          },
+          {
+            id: "kct_yenbai",
+            name: "Kho Chuyển Tiếp Yên Bái",
+            type: "hub",
+            note: "Yên Bái",
+            children: [
+              { id: "yba_baoai", name: "(YBA) Bảo Ái", type: "leaf", note: "Yên Bái" },
+              { id: "yba_mava", name: "(YBA) Mậu A", type: "leaf", note: "Yên Bái" },
+              { id: "yba_catthinh", name: "(YBA) Cát Thịnh", type: "leaf", note: "Yên Bái" },
+              { id: "yba_thacba", name: "(YBA) Thác Bà", type: "leaf", note: "Yên Bái" },
+              { id: "yba_lucyen", name: "(YBA) Lục Yên", type: "leaf", note: "Yên Bái" }
+            ]
+          },
+          {
+            id: "kct_tuyenquang",
+            name: "Kho Chuyển Tiếp Tuyên Quang",
+            type: "hub",
+            note: "Tuyên Quang & Hà Giang",
+            children: [
+              { id: "tqg_yenson", name: "(TQG) Yên Sơn", type: "leaf", note: "Tuyên Quang" },
+              { id: "tqg_sonduong", name: "(TQG) Sơn Dương", type: "leaf", note: "Tuyên Quang" },
+              { id: "tqg_chiemhoa", name: "(TQG) Chiêm Hóa", type: "leaf", note: "Tuyên Quang" },
+              { id: "hag_vixuyen", name: "(HAG) Vị Xuyên", type: "leaf", note: "Hà Giang" },
+              { id: "hag_vinhtuy", name: "(HAG) Vĩnh Tuy", type: "leaf", note: "Hà Giang" },
+              { id: "hag_bacquang", name: "(HAG) Bắc Quang", type: "leaf", note: "Hà Giang" },
+              { id: "hag_hagiang2", name: "(HAG) Hà Giang 2", type: "leaf", note: "Hà Giang" }
+            ]
+          },
+          {
+            id: "kct_hoabinh",
+            name: "Kho Chuyển Tiếp Hòa Bình 02",
+            type: "hub",
+            note: "Hòa Bình",
+            children: [
+              { id: "hbi_kimboi", name: "(HBI) Kim Bôi", type: "leaf", note: "Hòa Bình" },
+              { id: "hbi_lacson", name: "(HBI) Lạc Sơn", type: "leaf", note: "Hòa Bình" },
+              { id: "hbi_lacthuy", name: "(HBI) Lạc Thủy", type: "leaf", note: "Hòa Bình" },
+              { id: "hbi_tanlac", name: "(HBI) Tân Lạc", type: "leaf", note: "Hòa Bình" }
+            ]
+          },
+          {
+            id: "kct_thanhhoa",
+            name: "Kho Chuyển Tiếp Thanh Hóa",
+            type: "hub",
+            note: "Thanh Hóa",
+            children: [
+              { id: "tho_luongson", name: "(THO) Lương Sơn", type: "leaf", note: "Thanh Hóa" },
+              { id: "tho_bathuoc", name: "(THO) Bá Thước", type: "leaf", note: "Thanh Hóa" },
+              { id: "tho_tinhgia", name: "(THO) Tĩnh Gia", type: "leaf", note: "Thanh Hóa" },
+              { id: "tho_kimtan", name: "(THO) Kim Tân", type: "leaf", note: "Thanh Hóa" },
+              { id: "tho_ngason", name: "(THO) Nga Sơn", type: "leaf", note: "Thanh Hóa" },
+              { id: "tho_saovang", name: "(THO) Sao Vàng", type: "leaf", note: "Thanh Hóa" },
+              { id: "tho_nongcong", name: "(THO) Nông Cống", type: "leaf", note: "Thanh Hóa" },
+              { id: "tho_vinhloc", name: "(THO) Vĩnh Lộc", type: "leaf", note: "Thanh Hóa" },
+              { id: "tho_thietong", name: "(THO) Thiết Ống", type: "leaf", note: "Thanh Hóa" },
+              { id: "tho_luuve", name: "(THO) Lưu Vệ", type: "leaf", note: "Thanh Hóa" }
+            ]
+          },
+          {
+            id: "kct_sonla",
+            name: "Kho Chuyển Tiếp Sơn La",
+            type: "hub",
+            note: "Sơn La & Điện Biên",
+            children: [
+              { id: "sla_thaonguyen", name: "(SLA) Thảo Nguyên", type: "leaf", note: "Sơn La" },
+              { id: "sla_mocson", name: "(SLA) Mộc Sơn", type: "leaf", note: "Sơn La" },
+              { id: "dbi_tuachua", name: "(DBI) Tủa Chùa", type: "leaf", note: "Điện Biên" },
+              { id: "kghn_dienbien", name: "Kho Giao Hàng Nặng - Điện Biên Phủ", type: "branch", note: "Điện Biên" },
+              { id: "kghn_sonla", name: "Kho Giao Hàng Nặng - TP Sơn La", type: "branch", note: "Sơn La" }
+            ]
+          },
+          {
+            id: "kct_laocai",
+            name: "Kho Chuyển Tiếp Lào Cai",
+            type: "hub",
+            note: "Lào Cai & Lai Châu",
+            children: [
+              { id: "lca_tanphong", name: "(LCA) Tân Phong", type: "leaf", note: "Lào Cai" },
+              { id: "lca_batxat", name: "(LCA) Bát Xát", type: "leaf", note: "Lào Cai" },
+              { id: "lca_namhang", name: "(LCA) Nậm Hàng", type: "leaf", note: "Lai Châu" },
+              { id: "lca_simacai", name: "(LCA) Si Ma Cai", type: "leaf", note: "Lào Cai" },
+              { id: "lca_baoyen", name: "(LCA) Bảo Yên", type: "leaf", note: "Lào Cai" },
+              { id: "lca_bacha", name: "(LCA) Bắc Hà", type: "leaf", note: "Lào Cai" },
+              { id: "lca_thanuyen", name: "(LCA) Than Uyên", type: "leaf", note: "Lai Châu" },
+              { id: "lca_phongtho", name: "(LCA) Phong Thổ", type: "leaf", note: "Lai Châu" },
+              { id: "lca_muongte", name: "(LCA) Mường Tè", type: "leaf", note: "Lai Châu" },
+              { id: "kghn_laocai", name: "Kho Giao Hàng Nặng - TP Lào Cai", type: "branch", note: "Lào Cai" }
+            ]
+          },
+          {
+            id: "ktc_nghean",
+            name: "Kho Trung Chuyển Nghệ An",
+            type: "hub",
+            note: "Nghệ An & Hà Tĩnh",
+            children: [
+              { id: "kghn_vinh", name: "Kho Giao Hàng Nặng - Vinh - Nghệ An", type: "branch", note: "Nghệ An" },
+              { id: "kghn_thachlinh", name: "Kho Giao Hàng Nặng - Thạch Linh - Hà Tĩnh", type: "branch", note: "Hà Tĩnh" },
+              { id: "nan_quyhop", name: "(NAN) Quỳ Hợp", type: "leaf", note: "Nghệ An" },
+              { id: "nan_tanky", name: "(NAN) Tân Kỳ", type: "leaf", note: "Nghệ An" },
+              { id: "nan_quynhmai", name: "(NAN) Quỳnh Mai", type: "leaf", note: "Nghệ An" }
+            ]
+          },
+          {
+            id: "ktc_danang",
+            name: "Kho Trung Chuyển Đà Nẵng",
+            type: "hub",
+            note: "Đà Nẵng & Quảng Nam",
+            children: [
+              { id: "kghn_tamky", name: "Kho Giao Hàng Nặng - Tam Kỳ - Quảng Nam", type: "branch", note: "Quảng Nam" },
+              { id: "kghn_hoian", name: "Kho Giao Hàng Nặng - Hội An - Quảng Nam", type: "branch", note: "Quảng Nam" },
+              { id: "kghn_hoaxuan", name: "Kho Giao Hàng Nặng - Hòa Xuân - Đà Nẵng", type: "branch", note: "Đà Nẵng" },
+              { id: "kghn_lien_chieu", name: "Kho Giao Hàng Nặng - Liên Chiểu - Đà Nẵng", type: "branch", note: "Đà Nẵng" }
+            ]
+          },
+          {
+            id: "kct_hue",
+            name: "Kho Chuyển Tiếp Thừa Thiên Huế",
+            type: "hub",
+            note: "Huế",
+            children: [
+              { id: "kghn_huongthuy", name: "Kho Giao Hàng Nặng - Hương Thủy - Huế", type: "branch", note: "Thừa Thiên Huế" }
+            ]
+          },
+          {
+            id: "ktc_cantho",
+            name: "Kho Trung Chuyển Cần Thơ",
+            type: "hub",
+            note: "Miền Tây",
+            children: [
+              { id: "kghn_binhthuy", name: "Kho Giao Hàng Nặng - Bình Thủy - Cần Thơ", type: "branch", note: "Cần Thơ" },
+              { id: "tvu_tieucan", name: "(TVU) Tiểu Cần", type: "leaf", note: "Trà Vinh" },
+              { id: "kghn_soctrang", name: "Kho Giao Hàng Nặng - TP Sóc Trăng", type: "branch", note: "Sóc Trăng" },
+              { id: "kghn_longxuyen", name: "Kho Giao Hàng Nặng - TP Long Xuyên", type: "branch", note: "An Giang" },
+              { id: "kghn_tamnong", name: "Kho Giao Hàng Nặng - Tam Nông", type: "branch", note: "Đồng Tháp" },
+              { id: "kghn_nganam", name: "Kho Giao Hàng Nặng - TX Ngã Năm", type: "branch", note: "Sóc Trăng" },
+              { id: "kghn_travinh", name: "Kho Giao Hàng Nặng - TP Trà Vinh", type: "branch", note: "Trà Vinh" },
+              { id: "kghn_vinhlong", name: "Kho Giao Hàng Nặng - Vĩnh Long", type: "branch", note: "Vĩnh Long" },
+              { id: "kghn_baclieu", name: "Kho Giao Hàng Nặng - TP Bạc Liêu", type: "branch", note: "Bạc Liêu" }
+            ]
+          },
+          {
+            id: "direct_haihau",
+            name: "Kho Giao Hàng Nặng - Hải Hậu - Nam Định",
+            type: "branch",
+            note: "Tuyến Trực Tiếp"
+          },
+          {
+            id: "direct_anthi",
+            name: "Kho Giao Hàng Nặng - Ân Thi - Hưng Yên",
+            type: "branch",
+            note: "Tuyến Trực Tiếp"
+          },
+          {
+            id: "direct_donghung",
+            name: "Kho Giao Hàng Nặng - Đông Hưng - Thái Bình",
+            type: "branch",
+            note: "Tuyến Trực Tiếp"
+          },
+          {
+            id: "direct_nhoquan",
+            name: "Kho Giao Hàng Nặng - Nho Quan - Ninh Bình",
+            type: "branch",
+            note: "Tuyến Trực Tiếp"
+          },
+          {
+            id: "direct_lapthach",
+            name: "Kho Giao Hàng Nặng - Lập Thạch - Vĩnh Phúc",
+            type: "branch",
+            note: "Tuyến Trực Tiếp"
+          }
+        ]
+      },
+      hn: {
+        id: "root_hn",
+        name: "B2B Hà Nội — Tầng 3 Kho Đài Tư (HN02)",
+        type: "root",
+        note: "Hub Nguồn Hà Nội",
+        children: [
+          {
+            id: "hn_kct_haiphong",
+            name: "Kho Chuyển Tiếp Hải Phòng 01",
+            type: "hub",
+            note: "Hải Phòng",
+            children: [
+              { id: "kghn_anduong", name: "Kho Giao Hàng Nặng - An Dương - Hải Phòng", type: "branch", note: "Hải Phòng" },
+              { id: "qni_mongcai", name: "(QNI) Móng Cái", type: "leaf", note: "Quảng Ninh" },
+              { id: "qni_cauong", name: "(QNI) Cửa Ông 2", type: "leaf", note: "Quảng Ninh" }
+            ]
+          },
+          {
+            id: "hn_kct_quangninh",
+            name: "Kho Chuyển Tiếp Quảng Ninh",
+            type: "hub",
+            note: "Quảng Ninh",
+            children: [
+              { id: "kghn_halong", name: "Kho Giao Hàng Nặng - TP Hạ Long", type: "branch", note: "Quảng Ninh" },
+              { id: "kghn_maokhe", name: "Kho Giao Hàng Nặng - Mạo Khê - Quảng Ninh", type: "branch", note: "Quảng Ninh" }
+            ]
+          },
+          {
+            id: "hn_kct_vinhphuc",
+            name: "Kho Chuyển Tiếp Vĩnh Phúc",
+            type: "hub",
+            note: "Vĩnh Phúc & Phú Thọ",
+            children: [
+              { id: "kghn_phutho", name: "Kho Giao Hàng Nặng - Phú Thọ", type: "branch", note: "Phú Thọ" },
+              { id: "kghn_lapthach_hn", name: "Kho Giao Hàng Nặng - Lập Thạch - Vĩnh Phúc", type: "branch", note: "Vĩnh Phúc" },
+              { id: "kghn_binhxuyen_hn", name: "Kho Giao Hàng Nặng - Bình Xuyên - Vĩnh Phúc", type: "branch", note: "Vĩnh Phúc" },
+              { id: "kghn_maihau", name: "Kho Giao Hàng Nặng - Mai Hậu - Phú Thọ", type: "branch", note: "Phú Thọ" }
+            ]
+          },
+          {
+            id: "hn_direct_namdinh",
+            name: "Kho Giao Hàng Nặng - Mỹ Lộc - Nam Định",
+            type: "branch",
+            note: "Tuyến Trực Tiếp"
+          },
+          {
+            id: "hn_direct_haiduong",
+            name: "Kho Giao Hàng Nặng - Tân Bình - Hải Dương",
+            type: "branch",
+            note: "Tuyến Trực Tiếp"
+          }
+        ]
+      },
+      hcm: {
+        id: "root_hcm",
+        name: "Kho Trung Chuyển Củ Chi TP HCM (HCM01)",
+        type: "root",
+        note: "Hub Nguồn Miền Nam",
+        children: [
+          {
+            id: "hcm_kct_binhthuan",
+            name: "Kho Chuyển Tiếp Bình Thuận",
+            type: "hub",
+            note: "Bình Thuận & Đồng Nai",
+            children: [
+              { id: "kghn_phanthiet", name: "Kho Giao Hàng Nặng - Phan Thiết - Bình Thuận", type: "branch", note: "Bình Thuận" },
+              { id: "kghn_lagi", name: "Kho Giao Hàng Nặng - La Gi - Bình Thuận", type: "branch", note: "Bình Thuận" },
+              { id: "kghn_longkhanh", name: "Kho Giao Hàng Nặng - Long Khánh - Đồng Nai", type: "branch", note: "Đồng Nai" },
+              { id: "kghn_trangbom", name: "Kho Giao Hàng Nặng - Trảng Bom - Đồng Nai", type: "branch", note: "Đồng Nai" },
+              { id: "dna_dinhquan", name: "(DNA) Định Quán", type: "leaf", note: "Đồng Nai" },
+              { id: "dna_tanphu", name: "(DNA) Tân Phú", type: "leaf", note: "Đồng Nai" },
+              { id: "dna_trian", name: "(DNA) Trị An", type: "leaf", note: "Đồng Nai" }
+            ]
+          },
+          {
+            id: "hcm_ktc_binhdinh",
+            name: "Kho Trung Chuyển Bình Định",
+            type: "hub",
+            note: "Bình Định & Phú Yên",
+            children: [
+              { id: "kghn_tuyhoa", name: "Kho Giao Hàng Nặng - Tuy Hoà - Phú Yên", type: "branch", note: "Phú Yên" },
+              { id: "kghn_quynhon", name: "Kho Giao Hàng Nặng - Quy Nhơn - Bình Định", type: "branch", note: "Bình Định" },
+              { id: "kghn_hoainhon", name: "Kho Giao Hàng Nặng - Hoài Nhơn - Bình Định", type: "branch", note: "Bình Định" },
+              { id: "bdi_tayson", name: "(BDI) Tây Sơn", type: "leaf", note: "Bình Định" }
+            ]
+          },
+          {
+            id: "hcm_kct_khanhhoa",
+            name: "Kho Chuyển Tiếp Khánh Hòa",
+            type: "hub",
+            note: "Khánh Hòa & Ninh Thuận",
+            children: [
+              { id: "kghn_phanrang", name: "Kho Giao Hàng Nặng - Phan Rang - Ninh Thuận", type: "branch", note: "Ninh Thuận" },
+              { id: "kghn_camranh", name: "Kho Giao Hàng Nặng - Cam Ranh - Khánh Hòa", type: "branch", note: "Khánh Hòa" }
+            ]
+          },
+          {
+            id: "hcm_kct_daknong",
+            name: "Kho Chuyển Tiếp Đắk Nông",
+            type: "hub",
+            note: "Đắk Nông",
+            children: [
+              { id: "kghn_gianghia", name: "Kho Giao Hàng Nặng - Gia Nghĩa - Đắk Nông", type: "branch", note: "Đắk Nông" }
+            ]
+          },
+          {
+            id: "hcm_kct_gialai",
+            name: "Kho Chuyển Tiếp Gia Lai",
+            type: "hub",
+            note: "Gia Lai & Kon Tum",
+            children: [
+              { id: "kghn_pleiku", name: "Kho Giao Hàng Nặng - Pleiku - Gia Lai", type: "branch", note: "Gia Lai" },
+              { id: "ktm_kontum", name: "(KTM) Kon Tum", type: "leaf", note: "Kon Tum" },
+              { id: "rte_phutuc", name: "(RTE) Phú Túc", type: "leaf", note: "Gia Lai" }
+            ]
+          },
+          {
+            id: "hcm_kct_binhphuoc",
+            name: "Kho Chuyển Tiếp Bình Phước",
+            type: "hub",
+            note: "Bình Phước",
+            children: [
+              { id: "kghn_binhlong", name: "Kho Giao Hàng Nặng - Bình Long - Bình Phước", type: "branch", note: "Bình Phước" },
+              { id: "kghn_dongxoai", name: "Kho Giao Hàng Nặng - Đồng Xoài - Bình Phước", type: "branch", note: "Bình Phước" }
+            ]
+          },
+          {
+            id: "hcm_direct_bentre",
+            name: "Kho Giao Hàng Nặng - TP Bến Tre",
+            type: "branch",
+            note: "Bến Tre"
+          }
+        ]
+      }
+    };
+
+    // Build Master Network that combines all 3 hubs
+    DEFAULT_NETWORKS.master = {
+      id: "root_master",
+      name: "Mạng Lưới B2B Toàn Quốc",
+      type: "root",
+      note: "Tổng Kho Quốc Gia",
+      children: [
+        JSON.parse(JSON.stringify(DEFAULT_NETWORKS.hy)),
+        JSON.parse(JSON.stringify(DEFAULT_NETWORKS.hn)),
+        JSON.parse(JSON.stringify(DEFAULT_NETWORKS.hcm))
+      ]
+    };
+
+    // Working copy stored in localStorage
+    let currentHubKey = "hy";
+    let activeData = null;
+
+    function getStorageKey(hubKey) {
+      return `b2b_network_data_${hubKey}`;
+    }
+
+    function loadNetworkData(hubKey) {
+      const saved = localStorage.getItem(getStorageKey(hubKey));
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error("Lỗi đọc localStorage, khôi phục mặc định:", e);
+        }
+      }
+      return JSON.parse(JSON.stringify(DEFAULT_NETWORKS[hubKey] || DEFAULT_NETWORKS.hy));
+    }
+
+    function saveCurrentData() {
+      localStorage.setItem(getStorageKey(currentHubKey), JSON.stringify(activeData));
+      updateNodeCountBadge();
+    }
+
+    // ==================== D3 TREE VISUALIZER ====================
+    let svg, mainGroup, zoomBehavior;
+    let rootNodeHierarchy = null;
+    let i = 0;
+    const duration = 400;
+
+    // Node Dimensions
+    const nodeWidth = 260;
+    const nodeHeight = 54;
+    const levelSpacing = 320;
+
+    function initGraph() {
+      const container = document.getElementById("graph-container");
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      svg = d3.select("#networkSvg");
+      mainGroup = d3.select("#mainGroup");
+
+      zoomBehavior = d3.zoom()
+        .scaleExtent([0.15, 2.5])
+        .on("zoom", (event) => {
+          mainGroup.attr("transform", event.transform);
+        });
+
+      svg.call(zoomBehavior);
+
+      // Initial transform
+      svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(60, height / 2 - 40).scale(0.85));
+
+      activeData = loadNetworkData(currentHubKey);
+      renderTree();
+    }
+
+    function switchRootHub(hubKey) {
+      currentHubKey = hubKey;
+      activeData = loadNetworkData(currentHubKey);
+      renderTree();
+      resetZoom();
+      showToast(`Đã chuyển sang ${activeData.name}`);
+    }
+
+    function renderTree() {
+      rootNodeHierarchy = d3.hierarchy(activeData, d => d.children);
+      rootNodeHierarchy.x0 = document.getElementById("graph-container").clientHeight / 2;
+      rootNodeHierarchy.y0 = 0;
+
+      updateTree(rootNodeHierarchy);
+      updateNodeCountBadge();
+    }
+
+    function updateTree(source) {
+      const treeLayout = d3.tree().nodeSize([nodeHeight + 24, levelSpacing]);
+      const treeData = treeLayout(rootNodeHierarchy);
+
+      const nodes = treeData.descendants();
+      const links = treeData.links();
+
+      // Normalize for fixed-depth
+      nodes.forEach(d => {
+        d.y = d.depth * levelSpacing;
+      });
+
+      // ****************** NODES SECTION ******************
+      const node = mainGroup.selectAll('g.node-group')
+        .data(nodes, d => d.data.id || (d.data.id = ++i));
+
+      // Enter new nodes at parent's previous position
+      const nodeEnter = node.enter().append('g')
+        .attr('class', d => `node-group ${d.data.type || 'leaf'}`)
+        .attr('transform', d => `translate(${source.y0 || 0},${source.x0 || 0})`)
+        .on('click', (event, d) => {
+          // If click was on toggle or button, handle separately
+          if (event.target.closest('.toggle-btn') || event.target.closest('.node-action-btn')) {
+            return;
+          }
+          toggleNode(d);
+        });
+
+      // Card Background Rect
+      nodeEnter.append('rect')
+        .attr('class', 'card-bg')
+        .attr('width', nodeWidth)
+        .attr('height', nodeHeight)
+        .attr('x', 0)
+        .attr('y', -nodeHeight / 2);
+
+      // Node Icon
+      nodeEnter.append('text')
+        .attr('x', 14)
+        .attr('y', -4)
+        .attr('font-family', 'FontAwesome')
+        .attr('font-size', '13px')
+        .attr('fill', d => d.data.type === 'root' ? '#ffffff' : (d.data.type === 'hub' ? '#16a34a' : (d.data.type === 'branch' ? '#0284c7' : '#64748b')))
+        .text(d => d.data.type === 'root' ? '\uf494' : (d.data.type === 'hub' ? '\uf1b3' : (d.data.type === 'branch' ? '\uf0d1' : '\uf3c5')));
+
+      // Node Title (Text)
+      nodeEnter.append('text')
+        .attr('class', 'node-title')
+        .attr('x', 36)
+        .attr('y', -4)
+        .text(d => truncateText(d.data.name, 26));
+
+      // Node Subtitle / Note
+      nodeEnter.append('text')
+        .attr('class', 'node-subtitle')
+        .attr('x', 36)
+        .attr('y', 14)
+        .text(d => d.data.note || (d.children ? `${d.children.length} nhánh con` : 'Điểm giao cuối'));
+
+      // Action: Edit Button (Pencil icon)
+      const editBtn = nodeEnter.append('g')
+        .attr('class', 'node-action-btn')
+        .attr('transform', `translate(${nodeWidth - 45}, -4)`)
+        .on('click', (event, d) => {
+          event.stopPropagation();
+          openEditModal(d.data);
+        });
+      editBtn.append('text')
+        .attr('font-family', 'FontAwesome')
+        .attr('font-size', '12px')
+        .text('\uf304')
+        .append('title').text('Chỉnh sửa thông tin');
+
+      // Action: Delete Button (Trash icon - only if not root)
+      const delBtn = nodeEnter.filter(d => d.depth > 0).append('g')
+        .attr('class', 'node-action-btn')
+        .attr('transform', `translate(${nodeWidth - 25}, -4)`)
+        .on('click', (event, d) => {
+          event.stopPropagation();
+          deleteNode(d.data.id);
+        });
+      delBtn.append('text')
+        .attr('font-family', 'FontAwesome')
+        .attr('font-size', '12px')
+        .attr('fill', '#ef4444')
+        .text('\uf2ed')
+        .append('title').text('Xóa điểm/tuyến này');
+
+      // Toggle Circle (+ / -) for expandable nodes
+      const toggleG = nodeEnter.filter(d => (d.children || d._children))
+        .append('g')
+        .attr('class', 'toggle-btn')
+        .attr('transform', `translate(${nodeWidth}, 0)`)
+        .on('click', (event, d) => {
+          event.stopPropagation();
+          toggleNode(d);
+        });
+
+      toggleG.append('circle').attr('r', 9);
+      toggleG.append('text').text(d => d.children ? '-' : '+');
+
+      // UPDATE existing nodes
+      const nodeUpdate = nodeEnter.merge(node);
+
+      nodeUpdate.transition().duration(duration)
+        .attr('transform', d => `translate(${d.y},${d.x})`);
+
+      nodeUpdate.select('.node-title').text(d => truncateText(d.data.name, 26));
+      nodeUpdate.select('.node-subtitle').text(d => d.data.note || (d.children ? `${d.children.length} nhánh con` : (d._children ? `${d._children.length} nhánh (ẩn)` : 'Điểm giao cuối')));
+      nodeUpdate.select('.toggle-btn text').text(d => d.children ? '-' : '+');
+
+      // Remove exiting nodes
+      const nodeExit = node.exit().transition().duration(duration)
+        .attr('transform', d => `translate(${source.y},${source.x})`)
+        .remove();
+
+      // ****************** LINKS SECTION ******************
+      const link = mainGroup.selectAll('path.link-path')
+        .data(links, d => d.target.data.id);
+
+      const linkEnter = link.enter().insert('path', 'g')
+        .attr('class', 'link-path')
+        .attr('d', d => {
+          const o = { x: source.x0 || 0, y: (source.y0 || 0) + nodeWidth };
+          return diagonal(o, o);
+        });
+
+      const linkUpdate = linkEnter.merge(link);
+
+      linkUpdate.transition().duration(duration)
+        .attr('d', d => {
+          const s = { x: d.source.x, y: d.source.y + nodeWidth };
+          const t = { x: d.target.x, y: d.target.y };
+          return diagonal(s, t);
+        });
+
+      link.exit().transition().duration(duration)
+        .attr('d', d => {
+          const o = { x: source.x, y: source.y + nodeWidth };
+          return diagonal(o, o);
+        })
+        .remove();
+
+      // Stash old positions for transition
+      nodes.forEach(d => {
+        d.x0 = d.x;
+        d.y0 = d.y;
+      });
+    }
+
+    // Smooth Bézier curve generator
+    function diagonal(s, d) {
+      const deltaX = d.y - s.y;
+      const control1X = s.y + deltaX * 0.5;
+      const control2X = d.y - deltaX * 0.5;
+      return `M ${s.y} ${s.x}
+              C ${control1X} ${s.x},
+                ${control2X} ${d.x},
+                ${d.y} ${d.x}`;
+    }
+
+    function toggleNode(d) {
+      if (d.children) {
+        d._children = d.children;
+        d.children = null;
+      } else if (d._children) {
+        d.children = d._children;
+        d._children = null;
+      }
+      updateTree(d);
+    }
+
+    function expandAll() {
+      function expand(d) {
+        if (d._children) {
+          d.children = d._children;
+          d._children = null;
+        }
+        if (d.children) d.children.forEach(expand);
+      }
+      expand(rootNodeHierarchy);
+      updateTree(rootNodeHierarchy);
+      showToast("Đã mở toàn bộ các nhánh");
+    }
+
+    function collapseAll() {
+      function collapse(d) {
+        if (d.children) {
+          d._children = d.children;
+          d.children = null;
+          d._children.forEach(collapse);
+        }
+      }
+      if (rootNodeHierarchy.children) {
+        rootNodeHierarchy.children.forEach(collapse);
+      }
+      updateTree(rootNodeHierarchy);
+      showToast("Đã thu gọn về Hub chính");
+    }
+
+    function zoomIn() {
+      svg.transition().duration(300).call(zoomBehavior.scaleBy, 1.25);
+    }
+
+    function zoomOut() {
+      svg.transition().duration(300).call(zoomBehavior.scaleBy, 0.8);
+    }
+
+    function resetZoom() {
+      const container = document.getElementById("graph-container");
+      const height = container.clientHeight;
+      svg.transition().duration(400).call(
+        zoomBehavior.transform,
+        d3.zoomIdentity.translate(60, height / 2 - 40).scale(0.85)
+      );
+    }
+
+    function truncateText(text, maxLen) {
+      if (!text) return "";
+      return text.length > maxLen ? text.substring(0, maxLen - 2) + "..." : text;
+    }
+
+    function updateNodeCountBadge() {
+      if (!activeData) return;
+      let count = 0;
+      function countNodes(node) {
+        count++;
+        if (node.children) node.children.forEach(countNodes);
+      }
+      countNodes(activeData);
+      document.getElementById("nodeCountBadge").innerHTML = `<i class="fa-solid fa-circle-nodes"></i> Tổng số: <b>${count}</b> điểm giao/tuyến`;
+    }
+
+    // ==================== SEARCH & HIGHLIGHT ====================
+    function handleSearch(query) {
+      query = query.trim().toLowerCase();
+      d3.selectAll('.node-group').classed('highlight', false);
+      d3.selectAll('.link-path').classed('highlight', false);
+
+      if (!query) return;
+
+      let matchCount = 0;
+      d3.selectAll('.node-group').each(function(d) {
+        const nameMatch = d.data.name && d.data.name.toLowerCase().includes(query);
+        const noteMatch = d.data.note && d.data.note.toLowerCase().includes(query);
+        if (nameMatch || noteMatch) {
+          d3.select(this).classed('highlight', true);
+          matchCount++;
+        }
+      });
+
+      if (matchCount > 0) {
+        showToast(`Tìm thấy ${matchCount} điểm phù hợp`);
+      }
+    }
+
+    // ==================== EDIT & ADD MODAL ====================
+    let editingNodeId = null;
+    let isAddingMode = false;
+
+    function populateParentSelect(selectedParentId) {
+      const select = document.getElementById("modalParentSelect");
+      select.innerHTML = "";
+
+      function collectHubs(node) {
+        // Can be parent if not leaf or if it's the root/hub
+        const opt = document.createElement("option");
+        opt.value = node.id;
+        opt.textContent = `${node.name} (${node.type})`;
+        if (node.id === selectedParentId) opt.selected = true;
+        select.appendChild(opt);
+
+        if (node.children) {
+          node.children.forEach(collectHubs);
+        }
+      }
+
+      collectHubs(activeData);
+    }
+
+    function openAddModal() {
+      isAddingMode = true;
+      editingNodeId = null;
+      document.getElementById("modalTitle").innerHTML = `<i class="fa-solid fa-plus-circle"></i> Thêm Điểm Giao / Tuyến Mới`;
+      document.getElementById("modalNodeName").value = "";
+      document.getElementById("modalNodeNote").value = "";
+      document.getElementById("modalNodeType").value = "branch";
+
+      populateParentSelect(activeData.id);
+      document.getElementById("nodeModal").style.display = "flex";
+    }
+
+    function openEditModal(nodeData) {
+      isAddingMode = false;
+      editingNodeId = nodeData.id;
+      document.getElementById("modalTitle").innerHTML = `<i class="fa-solid fa-pen-to-square"></i> Chỉnh Sửa: ${nodeData.name}`;
+      document.getElementById("modalNodeName").value = nodeData.name || "";
+      document.getElementById("modalNodeNote").value = nodeData.note || "";
+      document.getElementById("modalNodeType").value = nodeData.type || "leaf";
+
+      // Find current parent
+      let parentId = activeData.id;
+      function findParent(parent, targetId) {
+        if (parent.children) {
+          for (let child of parent.children) {
+            if (child.id === targetId) return parent.id;
+            const res = findParent(child, targetId);
+            if (res) return res;
+          }
+        }
+        return null;
+      }
+
+      const currentParent = findParent(activeData, nodeData.id);
+      populateParentSelect(currentParent || activeData.id);
+
+      document.getElementById("nodeModal").style.display = "flex";
+    }
+
+    function closeModal() {
+      document.getElementById("nodeModal").style.display = "none";
+    }
+
+    function saveNodeModal() {
+      const name = document.getElementById("modalNodeName").value.trim();
+      const note = document.getElementById("modalNodeNote").value.trim();
+      const type = document.getElementById("modalNodeType").value;
+      const targetParentId = document.getElementById("modalParentSelect").value;
+
+      if (!name) {
+        alert("Vui lòng nhập tên Kho / Bưu cục!");
+        return;
+      }
+
+      if (isAddingMode) {
+        // Create new node
+        const newNode = {
+          id: "node_" + Date.now(),
+          name: name,
+          note: note,
+          type: type
+        };
+
+        // Add to parent
+        function addToParent(parent) {
+          if (parent.id === targetParentId) {
+            if (!parent.children) parent.children = [];
+            parent.children.push(newNode);
+            return true;
+          }
+          if (parent.children) {
+            for (let child of parent.children) {
+              if (addToParent(child)) return true;
+            }
+          }
+          return false;
+        }
+
+        addToParent(activeData);
+        showToast(`Đã thêm mới: "${name}"`);
+      } else {
+        // Edit existing node
+        let targetNode = null;
+        function findAndEdit(parent) {
+          if (parent.id === editingNodeId) {
+            parent.name = name;
+            parent.note = note;
+            parent.type = type;
+            targetNode = parent;
+            return;
+          }
+          if (parent.children) {
+            parent.children.forEach(findAndEdit);
+          }
+        }
+
+        findAndEdit(activeData);
+
+        // Check if parent changed (Re-routing)
+        function removeChild(parent, id) {
+          if (!parent.children) return false;
+          const idx = parent.children.findIndex(c => c.id === id);
+          if (idx >= 0) {
+            const removed = parent.children.splice(idx, 1)[0];
+            return removed;
+          }
+          for (let child of parent.children) {
+            const res = removeChild(child, id);
+            if (res) return res;
+          }
+          return null;
+        }
+
+        // Only re-route if not root
+        if (editingNodeId !== activeData.id) {
+          const removedNode = removeChild(activeData, editingNodeId);
+          if (removedNode) {
+            function attachToNewParent(parent) {
+              if (parent.id === targetParentId) {
+                if (!parent.children) parent.children = [];
+                parent.children.push(removedNode);
+                return true;
+              }
+              if (parent.children) {
+                for (let child of parent.children) {
+                  if (attachToNewParent(child)) return true;
+                }
+              }
+              return false;
+            }
+            attachToNewParent(activeData);
+          }
+        }
+
+        showToast(`Đã cập nhật: "${name}"`);
+      }
+
+      closeModal();
+      saveCurrentData();
+      renderTree();
+    }
+
+    function deleteNode(nodeId) {
+      if (!confirm("Bạn có chắc chắn muốn xóa điểm/tuyến này khỏi mạng lưới?")) return;
+
+      function removeChild(parent, id) {
+        if (!parent.children) return false;
+        const idx = parent.children.findIndex(c => c.id === id);
+        if (idx >= 0) {
+          parent.children.splice(idx, 1);
+          return true;
+        }
+        for (let child of parent.children) {
+          if (removeChild(child, id)) return true;
+        }
+        return false;
+      }
+
+      removeChild(activeData, nodeId);
+      saveCurrentData();
+      renderTree();
+      showToast("Đã xóa điểm thành công");
+    }
+
+    // ==================== EXPORT / IMPORT / RESET ====================
+    function exportJSON() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activeData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `b2b_network_${currentHubKey}_${Date.now()}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showToast("Đã xuất cấu hình mạng lưới thành công!");
+    }
+
+    function importJSON(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const json = JSON.parse(e.target.result);
+          if (!json.id || !json.name) {
+            alert("File JSON không hợp lệ. Cần có cấu trúc cây mạng lưới với các trường id, name, children.");
+            return;
+          }
+          activeData = json;
+          saveCurrentData();
+          renderTree();
+          showToast("Đã nhập cấu hình mạng lưới thành công!");
+        } catch (err) {
+          alert("Lỗi khi đọc file JSON: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function resetToDefault() {
+      if (!confirm("Bạn có chắc muốn khôi phục lại sơ đồ mẫu ban đầu? Mọi tùy chỉnh chưa xuất sẽ bị làm mới.")) return;
+      localStorage.removeItem(getStorageKey(currentHubKey));
+      activeData = JSON.parse(JSON.stringify(DEFAULT_NETWORKS[currentHubKey] || DEFAULT_NETWORKS.hy));
+      saveCurrentData();
+      renderTree();
+      showToast("Đã khôi phục về sơ đồ mẫu ban đầu");
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById("toast");
+      t.textContent = msg;
+      t.style.display = "block";
+      setTimeout(() => {
+        t.style.display = "none";
+      }, 2500);
+    }
+
+    // Initialize on load
+    window.addEventListener("DOMContentLoaded", () => {
+      initGraph();
+    });
+
+    window.addEventListener("resize", () => {
+      // Re-center on resize if needed
+    });
+  </script>
+</body>
+</html>

@@ -226,7 +226,7 @@ def display_dataframe(df_to_show):
     else:
         st.dataframe(df_to_show.style.format("{:,.0f}", na_rep=""), use_container_width=True)
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["1. SẢN LƯỢNG NHẬP KHO", "2. ONTIME XUẤT HÀNG", "3. GIAO TRONG NGÀY (CONCUNG)", "4. QUẢN LÝ NETWORK (DB)", "5. PHÂN TÍCH SORT CODE"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["1. SẢN LƯỢNG NHẬP KHO", "2. ONTIME XUẤT HÀNG", "3. GIAO TRONG NGÀY (CONCUNG)", "4. QUẢN LÝ NETWORK (DB)", "5. PHÂN TÍCH SORT CODE", "6. SƠ ĐỒ MẠNG LƯỚI (MINDMAP)"])
 
 # ==================== TAB 1 ====================
 with tab1:
@@ -874,6 +874,18 @@ with tab5:
         except Exception as e:
             st.error(f"Lỗi khi đọc file: {e}")
 
+# ==================== TAB 6 ====================
+with tab6:
+    st.header("SƠ ĐỒ MẠNG LƯỚI B2B (INTERACTIVE MINDMAP)")
+    st.markdown("Trực quan hóa cấu trúc mạng lưới phân cấp từ Kho nguồn đến các Kho Trung Chuyển (KTC), Kho Chuyển Tiếp (KCT), Kho Giao Hàng Nặng và Bưu Cục điểm cuối. Hỗ trợ tìm kiếm, mở/thu gọn nhánh, và tùy chỉnh thêm/bớt/đổi tuyến.")
+    
+    html_file_path = os.path.join(os.path.dirname(__file__), "network_graph.html")
+    if os.path.exists(html_file_path):
+        with open(html_file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        components.html(html_content, height=880, scrolling=True)
+    else:
+        st.error("Không tìm thấy file `network_graph.html`.")
 
 # Di chuyển thông tin sidebar xuống dưới cùng
 st.sidebar.markdown("---")
