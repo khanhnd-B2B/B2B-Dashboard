@@ -43,12 +43,14 @@ jobs:
           git add "Data B2B Master.xlsx"
           if ! git diff --staged --quiet; then
             git commit -m "Auto-update data from Google Sheets [skip ci]"
-            git push origin HEAD:main
+            git pull --rebase origin main || true
+            git push origin HEAD:main || true
           else
             echo "No changes to commit"
           fi
 
       - name: Send Daily Telegram Report
+        if: always()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

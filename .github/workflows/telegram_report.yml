@@ -1,15 +1,36 @@
-name: Keep Streamlit Dashboard Awake
+name: Daily Telegram Report & Keep Awake
 
 on:
   schedule:
+    # 08:35 AM Vietnam time (UTC+7) = 01:35 AM UTC
+    - cron: '35 1 * * *'
     # Ping every 6 hours to prevent Streamlit from sleeping
     - cron: '0 */6 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Cho phep bam chay thu cong tren GitHub
 
 jobs:
-  keep-alive:
+  report-and-ping:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas openpyxl requests
+
+      - name: Send Telegram Report
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python send_telegram.py
+
       - name: Ping Streamlit Dashboard
         run: |
           curl -sL https://b2b-dashboard-hydt.streamlit.app > /dev/null || true
