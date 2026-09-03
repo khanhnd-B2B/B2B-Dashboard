@@ -134,10 +134,11 @@ with col1:
     time_freq = st.selectbox("⏰ NHÓM THEO THỜI GIAN:", options=['Ngày (D)', 'Tuần (W)', 'Tháng (M)'], index=0)
 with col2:
     if 'NgayNhap' in df.columns and not df['NgayNhap'].dropna().empty:
-        min_date = df['NgayNhap'].dropna().min().date()
         max_date = df['NgayNhap'].dropna().max().date()
+        min_date_data = df['NgayNhap'].dropna().min().date()
+        min_date = max(min_date_data, max_date - timedelta(days=29))
     else:
-        min_date = (datetime.today() - timedelta(days=30)).date()
+        min_date = (datetime.today() - timedelta(days=29)).date()
         max_date = datetime.today().date()
     date_range = st.date_input("📅 TỪ NGÀY - ĐẾN NGÀY:", value=(min_date, max_date))
 with col3:
@@ -226,7 +227,7 @@ def display_dataframe(df_to_show):
     else:
         st.dataframe(df_to_show.style.format("{:,.0f}", na_rep=""), use_container_width=True)
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["1. SẢN LƯỢNG NHẬP KHO", "2. ONTIME XUẤT HÀNG", "3. GIAO TRONG NGÀY (CONCUNG)", "4. QUẢN LÝ NETWORK (DB)", "5. PHÂN TÍCH SORT CODE", "6. SƠ ĐỒ MẠNG LƯỚI (MINDMAP)"])
+tab1, tab2, tab3, tab4 = st.tabs(["1. SẢN LƯỢNG NHẬP KHO", "2. ONTIME XUẤT HÀNG", "3. PHÂN TÍCH SORT CODE", "4. SƠ ĐỒ MẠNG LƯỚI (MINDMAP)"])
 
 # ==================== TAB 1 ====================
 with tab1:
@@ -268,7 +269,7 @@ with tab1:
         
         period_map = df_filtered.set_index('Period_Str')['Period'].to_dict()
         overview_group['Period'] = overview_group.index.map(period_map)
-        overview_group = overview_group.sort_values('Period', ascending=False).drop(columns=['Period']).head(15).T
+        overview_group = overview_group.sort_values('Period', ascending=False).drop(columns=['Period']).head(30 if freq == 'D' else n_periods).T
         overview_group.index.name = 'Thời gian'
         
         for col in overview_group.columns:
@@ -300,21 +301,28 @@ with tab1:
                 grouped_date_kho = grouped_date_kho[grouped_date_kho['Kho'].isin(['Đài Tư', 'Hưng Yên'])]
                 grouped_date_kho = grouped_date_kho.groupby(['Period', 'Ngày', 'Kho']).agg({'Số_đơn': 'sum', 'Tổng_KG': 'sum'}).reset_index().sort_values('Period')
                 
+                if freq == 'D':
+                    recent_days = sorted(grouped_date_kho['Period'].unique())[-30:]
+                    grouped_date_kho = grouped_date_kho[grouped_date_kho['Period'].isin(recent_days)]
+                
                 if not grouped_date_kho.empty:
                     y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
-                    title = "Số đơn nhập theo thời gian" if metric_view == 'Số đơn' else "Khối lượng nhập theo thời gian"
+                    title = "Lượng hàng nhập"
                     fig1 = px.line(grouped_date_kho, x='Ngày', y=y_col, color='Kho', markers=True, title=title, custom_data=['Số_đơn', 'Tổng_KG'])
                     fig1.update_xaxes(categoryorder='array', categoryarray=grouped_date_kho['Ngày'].unique())
                     fig1.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig1, use_container_width=True)
                 else:
-                    st.info("Không có dữ liệu cho biểu đồ số đơn nhập theo thời gian.")
+                    st.info("Không có dữ liệu cho biểu đồ lượng hàng nhập.")
                     
             if 'NguonNhap' in df_chart1.columns:
                 grouped_nguon = df_chart1.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+                if freq == 'D':
+                    recent_days = sorted(grouped_nguon['Period'].unique())[-30:]
+                    grouped_nguon = grouped_nguon[grouped_nguon['Period'].isin(recent_days)]
                 if not grouped_nguon.empty:
                     y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
-                    fig2 = px.bar(grouped_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title="Nguồn nhập theo thời gian", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
+                    fig2 = px.bar(grouped_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title="Nguồn nhập", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
                     fig2.update_xaxes(categoryorder='array', categoryarray=grouped_nguon['Ngày'].unique())
                     fig2.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig2, use_container_width=True)
@@ -358,9 +366,12 @@ with tab1:
         if 'NguonNhap' in df_wh_full.columns and 'Period_Str' in df_wh_full.columns:
             df_wh_full['Ngày'] = df_wh_full['Period_Str']
             grouped_wh_nguon = df_wh_full.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+            if freq == 'D':
+                recent_days = sorted(grouped_wh_nguon['Period'].unique())[-30:]
+                grouped_wh_nguon = grouped_wh_nguon[grouped_wh_nguon['Period'].isin(recent_days)]
             if not grouped_wh_nguon.empty:
                 y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
-                fig_wh_nguon = px.bar(grouped_wh_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title=f"Sản lượng nhập theo thời gian", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
+                fig_wh_nguon = px.bar(grouped_wh_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title="Nguồn nhập", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
                 fig_wh_nguon.update_xaxes(categoryorder='array', categoryarray=grouped_wh_nguon['Ngày'].unique())
                 fig_wh_nguon.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                 st.plotly_chart(fig_wh_nguon, use_container_width=True)
@@ -547,270 +558,6 @@ with tab2:
 
 # ==================== TAB 3 ====================
 with tab3:
-    st.header("BÁO CÁO GIAO TRONG NGÀY - SAMEDAY (CONCUNG)")
-    st.markdown("Quy định: Đơn Concung **lấy thành công** tại HN, Bắc Ninh, Hải Dương, Hưng Yên phải **giao thành công trong cùng ngày lấy**.")
-
-    client_name_col = next((c for c in df_filtered.columns if c.lower() in ['client_name', 'clientname']), None)
-    if client_name_col:
-        df_concung = df_filtered[df_filtered[client_name_col].str.contains('Concung|Con Cưng', case=False, na=False)].copy()
-    else:
-        df_concung = df_filtered.head(0).copy()
-        
-    if 'TinhGiao' not in df_concung.columns:
-        df_concung['TinhGiao'] = None
-    if 'ThoiGianLayThanhCong' not in df_concung.columns:
-        df_concung['ThoiGianLayThanhCong'] = pd.NaT
-        
-    tinh_giao_hop_le = ['Hà Nội', 'Hưng Yên', 'Bắc Ninh', 'Hải Dương']
-    df_concung = df_concung[df_concung['TinhGiao'].isin(tinh_giao_hop_le)]
-    # Chỉ tính đơn đã lấy thành công
-    df_concung = df_concung.dropna(subset=['ThoiGianLayThanhCong'])
-
-    # Lọc bỏ ngày N (hôm nay)
-    today = pd.Timestamp.today().date()
-    df_concung = df_concung[df_concung['ThoiGianLayThanhCong'].dt.date < today]
-
-    df_concung['NgayLay_DT'] = df_concung['ThoiGianLayThanhCong'].dt.date
-
-    def check_giao_trong_ngay_lay(row):
-        """Đơn lấy trong ngày phải giao xong trong ngày"""
-        if pd.isna(row.get('ThoiGianGiaoThanhCong')): return False
-        return row['ThoiGianGiaoThanhCong'].date() == row['NgayLay_DT']
-
-    if not df_concung.empty:
-        df_concung['GiaoTrongNgayLay'] = df_concung.apply(check_giao_trong_ngay_lay, axis=1)
-    else:
-        df_concung['GiaoTrongNgayLay'] = False
-
-    # Tính Period cho Concung
-    df_concung['Period'] = get_period(df_concung['ThoiGianLayThanhCong'], freq)
-    df_concung['Period_Str'] = get_period_str(df_concung['ThoiGianLayThanhCong'], freq)
-
-    concung_summary = df_concung.groupby(['Period', 'Period_Str']).agg(
-        TongDonLay=('MaDonGoc', 'count'),
-        DonGiaoTrongNgay=('GiaoTrongNgayLay', 'sum')
-    ).reset_index()
-
-    # Giới hạn số kỳ
-    all_p_cc = concung_summary[['Period', 'Period_Str']].drop_duplicates().sort_values('Period', ascending=False)
-    keep_p_cc = all_p_cc.head(n_periods)['Period'].tolist()
-    concung_summary = concung_summary[concung_summary['Period'].isin(keep_p_cc)]
-
-    if not concung_summary.empty:
-        concung_summary['TyLe_Sameday (%)'] = (concung_summary['DonGiaoTrongNgay'] / concung_summary['TongDonLay'] * 100).round(2)
-        concung_summary = concung_summary.sort_values('Period', ascending=False)
-
-        sorted_p_cc = concung_summary[['Period', 'Period_Str']].drop_duplicates().sort_values('Period', ascending=False)['Period_Str'].tolist()
-        latest_p_cc = sorted_p_cc[0] if sorted_p_cc else None
-        prev_p_cc = sorted_p_cc[1] if len(sorted_p_cc) > 1 else None
-
-        if latest_p_cc:
-            latest_cc = concung_summary[concung_summary['Period_Str'] == latest_p_cc]
-            t_lay = latest_cc['TongDonLay'].sum()
-            t_giao = latest_cc['DonGiaoTrongNgay'].sum()
-            latest_pct = (t_giao / t_lay * 100) if t_lay > 0 else 0
-
-            prev_pct = None
-            if prev_p_cc:
-                prev_cc = concung_summary[concung_summary['Period_Str'] == prev_p_cc]
-                t_lay_prev = prev_cc['TongDonLay'].sum()
-                t_giao_prev = prev_cc['DonGiaoTrongNgay'].sum()
-                prev_pct = (t_giao_prev / t_lay_prev * 100) if t_lay_prev > 0 else 0
-
-            st.info("💡 **NHẬN XÉT GIAO HÀNG SAMEDAY CONCUNG:**")
-            comp = ""
-            if prev_pct is not None:
-                diff_pct = latest_pct - prev_pct
-                comp = f"(**{'tăng' if diff_pct >= 0 else 'giảm'} {abs(diff_pct):.1f}%** so với kỳ trước)"
-            st.markdown(f"- 📈 **Biến động:** Kỳ {latest_p_cc}, tỷ lệ sameday đạt **{latest_pct:.1f}%** ({t_giao:,.0f}/{t_lay:,.0f} đơn) {comp}")
-
-            not_done = t_lay - t_giao
-            if not_done > 0:
-                st.markdown(f"- ⚠️ **Đang làm chưa tốt:** Còn **{not_done:,.0f}** đơn lấy rồi nhưng chưa giao trong ngày.")
-            else:
-                st.markdown(f"- ✅ **Điểm sáng:** 100% đơn lấy kỳ {latest_p_cc} đã giao thành công trong ngày.")
-
-        df_display_cc = concung_summary.drop(columns=['Period']).rename(columns={
-            'Period_Str': 'Thời gian', 'TongDonLay': 'Đơn lấy',
-            'DonGiaoTrongNgay': 'Giao trong ngày', 'TyLe_Sameday (%)': 'Tỷ lệ sameday (%)'
-        })
-        st.dataframe(df_display_cc.style.format(na_rep="", formatter="{:,.0f}", subset=['Đơn lấy', 'Giao trong ngày']).format(na_rep="", formatter="{:,.2f}%", subset=['Tỷ lệ sameday (%)']), use_container_width=True)
-
-        st.subheader("ĐỒ THỊ TÌNH HÌNH XỬ LÝ SAMEDAY")
-        chart_cc = concung_summary.groupby(['Period', 'Period_Str'])[['TongDonLay', 'DonGiaoTrongNgay']].sum().reset_index()
-        chart_cc = chart_cc.sort_values('Period', ascending=True)
-        fig3 = px.bar(chart_cc, x='Period_Str', y=['TongDonLay', 'DonGiaoTrongNgay'], barmode='group',
-            title="TÌNH HÌNH LẤY - GIAO TRONG NGÀY",
-            labels={'Period_Str': 'Thời gian', 'value': 'Số lượng', 'variable': 'Chỉ số', 'TongDonLay': 'Đơn lấy', 'DonGiaoTrongNgay': 'Giao trong ngày'})
-        fig3.update_xaxes(categoryorder='array', categoryarray=chart_cc['Period_Str'].tolist())
-        st.plotly_chart(fig3, use_container_width=True)
-    else:
-        st.info("Không có dữ liệu đơn Concung tại 4 tỉnh sameday.")
-
-    with st.expander("XEM CHI TIẾT ĐƠN CHƯA GIAO TRONG NGÀY"):
-        not_delivered = df_concung[~df_concung['GiaoTrongNgayLay']]
-        cols_cc = ['MaDonGoc', 'TinhGiao', 'TrangThai', 'ThoiGianLayThanhCong', 'ThoiGianGiaoThanhCong']
-        cols_cc = [c for c in cols_cc if c in not_delivered.columns]
-        st.dataframe(not_delivered[cols_cc])
-
-# ==================== TAB 4 ====================
-with tab4:
-    st.header("QUẢN LÝ NETWORK B2B (DATABASE)")
-    st.markdown("Thay đổi dữ liệu tại đây sẽ cập nhật trực tiếp vào cơ sở dữ liệu hệ thống.")
-    
-    from sqlalchemy import create_engine, text
-    import sqlite3
-
-    DATABASE_URL = st.secrets.get("DATABASE_URL", "")
-    
-    def get_engine():
-        if DATABASE_URL:
-            return create_engine(DATABASE_URL)
-        else:
-            return create_engine("sqlite:///b2b_network.db")
-
-    def init_cloud_db():
-        engine = get_engine()
-        with engine.connect() as conn:
-            if DATABASE_URL:
-                conn.execute(text('''
-                    CREATE TABLE IF NOT EXISTS provinces_mapping (
-                        id SERIAL PRIMARY KEY,
-                        province TEXT UNIQUE,
-                        level1_code TEXT,
-                        level2_code TEXT,
-                        fixed_route TEXT
-                    )
-                '''))
-                conn.execute(text('''
-                    CREATE TABLE IF NOT EXISTS routes_schedule (
-                        id SERIAL PRIMARY KEY,
-                        route_code TEXT,
-                        hub TEXT,
-                        departure_time TEXT
-                    )
-                '''))
-            else:
-                conn.execute(text('''
-                    CREATE TABLE IF NOT EXISTS provinces_mapping (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        province TEXT UNIQUE,
-                        level1_code TEXT,
-                        level2_code TEXT,
-                        fixed_route TEXT
-                    )
-                '''))
-                conn.execute(text('''
-                    CREATE TABLE IF NOT EXISTS routes_schedule (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        route_code TEXT,
-                        hub TEXT,
-                        departure_time TEXT
-                    )
-                '''))
-            conn.commit()
-
-    try:
-        init_cloud_db()
-    except Exception as db_init_err:
-        st.warning(f"⚠️ Không thể kết nối Cloud DB (có thể project Supabase đang tạm dừng). Đang dùng Local SQLite fallback. Lỗi: {db_init_err}")
-        DATABASE_URL = ""  # Fallback về SQLite
-
-    def load_db_data(table_name):
-        try:
-            engine = get_engine()
-            df = pd.read_sql_query(f"SELECT * FROM {table_name}", engine)
-            return df
-        except Exception as e:
-            st.error(f"Lỗi kết nối DB: {e}")
-            return pd.DataFrame()
-            
-    def save_db_data(df, table_name):
-        try:
-            engine = get_engine()
-            if 'id' in df.columns:
-                df = df.drop(columns=['id'])
-            with engine.connect() as conn:
-                conn.execute(text(f"DELETE FROM {table_name}"))
-                conn.commit()
-            df.to_sql(table_name, engine, if_exists='append', index=False)
-            st.success(f"✅ Đã lưu thay đổi vào bảng {table_name}!")
-        except Exception as e:
-            st.error(f"Lỗi khi lưu DB: {e}")
-
-    if DATABASE_URL:
-        st.caption("🟢 Đang kết nối: **Cloud Database (Supabase)**")
-    else:
-        st.caption("🟡 Đang kết nối: **Local SQLite** (chưa cấu hình DATABASE_URL trong Secrets)")
-
-    # --- BẢNG 1: TỈNH THÀNH ---
-    st.subheader("1. Bản Đồ Phân Bổ Tỉnh Thành")
-    df_prov_db = load_db_data('provinces_mapping')
-    if not df_prov_db.empty:
-        # Ẩn cột id, đổi tên cột
-        df_prov_display = df_prov_db.drop(columns=['id'], errors='ignore')
-        col_rename_prov = {'province': 'Tỉnh', 'level1_code': 'Mã chữ', 'level2_code': 'Mã số', 'fixed_route': 'Mã tuyến cố định'}
-        df_prov_display = df_prov_display.rename(columns=col_rename_prov)
-        prov_height = (len(df_prov_display) + 1) * 35 + 3
-        
-        if st.session_state.get("user_email") in ADMIN_EMAILS:
-            edited_prov = st.data_editor(df_prov_display, num_rows="dynamic", key="editor_prov", use_container_width=True, height=prov_height)
-            if st.button("💾 Lưu Bản Đồ Tỉnh Thành"):
-                col_reverse_prov = {v: k for k, v in col_rename_prov.items()}
-                save_db_data(edited_prov.rename(columns=col_reverse_prov), 'provinces_mapping')
-        else:
-            st.dataframe(df_prov_display, use_container_width=True, height=prov_height)
-    else:
-        st.info("Chưa có dữ liệu. Hãy thêm dữ liệu nếu bạn là Admin.")
-            
-    # --- BẢNG 2: LỊCH TRÌNH THEO CUNG GIỜ ---
-    st.subheader("2. Lịch Trình Xuất Bến Theo Cung Giờ")
-    df_routes_db = load_db_data('routes_schedule')
-    if not df_routes_db.empty:
-        import math
-        df_r = df_routes_db.copy()
-        df_r['hour'] = df_r['departure_time'].apply(lambda x: int(str(x).split(':')[0]) if pd.notna(x) and ':' in str(x) else -1)
-        df_r = df_r[df_r['hour'] >= 0]
-        
-        time_slots = []
-        for h in range(24):
-            h_next = (h + 1) % 24
-            slot_label = f"{h:02d}:00 - {h_next:02d}:00"
-            hy_routes = sorted(df_r[(df_r['hour'] == h) & (df_r['hub'] == 'HY')]['route_code'].unique().tolist())
-            hn_routes = sorted(df_r[(df_r['hour'] == h) & (df_r['hub'] == 'HN')]['route_code'].unique().tolist())
-            if hy_routes or hn_routes:
-                time_slots.append({
-                    'Cung Giờ': slot_label,
-                    'KTC Hưng Yên (HY01)': '\n'.join(hy_routes) if hy_routes else '-',
-                    'KTC Đài Tư (HN02)': '\n'.join(hn_routes) if hn_routes else '-'
-                })
-        
-        df_schedule = pd.DataFrame(time_slots)
-        if not df_schedule.empty:
-            # Hiển thị bằng markdown table để nhìn hết nội dung
-            md_table = "| Cung Giờ | KTC Hưng Yên (HY01) | KTC Đài Tư (HN02) |\n|---|---|---|\n"
-            for _, row in df_schedule.iterrows():
-                hy_cell = row['KTC Hưng Yên (HY01)'].replace('\n', '<br>')
-                hn_cell = row['KTC Đài Tư (HN02)'].replace('\n', '<br>')
-                md_table += f"| **{row['Cung Giờ']}** | {hy_cell} | {hn_cell} |\n"
-            st.markdown(md_table, unsafe_allow_html=True)
-        else:
-            st.info("Không có dữ liệu lịch trình.")
-        
-        # Expander cho bảng raw data (admin edit)
-        if st.session_state.get("user_email") in ADMIN_EMAILS:
-            with st.expander("⚙️ Chỉnh sửa dữ liệu gốc (Raw Data)", expanded=False):
-                df_routes_display = df_routes_db.drop(columns=['id'], errors='ignore')
-                df_routes_display = df_routes_display.rename(columns={'route_code': 'Mã tuyến', 'hub': 'KTC', 'departure_time': 'Giờ xuất bến'})
-                routes_height = (len(df_routes_display) + 1) * 35 + 3
-                edited_routes = st.data_editor(df_routes_display, num_rows="dynamic", key="editor_routes", use_container_width=True, height=min(routes_height, 1500))
-                if st.button("💾 Lưu Lịch Trình"):
-                    col_reverse_routes = {'Mã tuyến': 'route_code', 'KTC': 'hub', 'Giờ xuất bến': 'departure_time'}
-                    save_db_data(edited_routes.rename(columns=col_reverse_routes), 'routes_schedule')
-    else:
-        st.info("Chưa có dữ liệu lịch trình.")
-# ==================== TAB 5 ====================
-with tab5:
     st.header("PHÂN TÍCH SORT CODE & TUYẾN TẢI CHUNG")
     st.markdown("Xác định các mã sort code đang được phân bổ chung cho nhiều Tỉnh Giao để từ đó ghép chung tuyến xe tải.")
     
@@ -874,18 +621,21 @@ with tab5:
         except Exception as e:
             st.error(f"Lỗi khi đọc file: {e}")
 
-# ==================== TAB 6 ====================
-with tab6:
+# ==================== TAB 4 ====================
+with tab4:
     st.header("SƠ ĐỒ MẠNG LƯỚI B2B (INTERACTIVE MINDMAP)")
     st.markdown("Trực quan hóa cấu trúc mạng lưới phân cấp từ Kho nguồn đến các Kho Trung Chuyển (KTC), Kho Chuyển Tiếp (KCT), Kho Giao Hàng Nặng và Bưu Cục điểm cuối. Hỗ trợ tìm kiếm, mở/thu gọn nhánh, và tùy chỉnh thêm/bớt/đổi tuyến.")
     
-    html_file_path = os.path.join(os.path.dirname(__file__), "network_graph.html")
+    html_file_path = os.path.join(os.path.dirname(__file__), "Network B2B — Lên Tuyến Trung Chuyển.html")
+    if not os.path.exists(html_file_path):
+        html_file_path = os.path.join(os.path.dirname(__file__), "network_graph.html")
+        
     if os.path.exists(html_file_path):
         with open(html_file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
         components.html(html_content, height=880, scrolling=True)
     else:
-        st.error("Không tìm thấy file `network_graph.html`.")
+        st.error("Không tìm thấy file sơ đồ mạng lưới.")
 
 # Di chuyển thông tin sidebar xuống dưới cùng
 st.sidebar.markdown("---")
