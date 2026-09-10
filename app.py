@@ -714,17 +714,23 @@ with tab4:
             mc3.metric("Tổng chuyến (7 ngày)", f"{df_show['SoLanChay7Ngay'].sum():,}")
 
             # Display table
-            df_display = df_show[['MaTuyen', 'DiemDauTien', 'DiemCuoiCung', 'GioXuatPhat_Str', 'ToanBoDiemDi', 'SoDiem', 'TrongTai', 'SoLanChay7Ngay', 'MaKho']].copy()
-            df_display.columns = ['Mã Tuyến', 'Điểm Xuất Phát', 'Điểm Đến', 'Giờ Xuất', 'Toàn Bộ Điểm Dừng', 'Số Điểm', 'Trọng Tải (kg)', 'Số Chuyến (7 ngày)', 'Mã Kho']
+            df_display = df_show[['MaTuyen', 'DiemDauTien', 'DiemCuoiCung', 'GioXuatPhat_Str', 'ToanBoDiemDi', 'TrongTai', 'SoLanChay7Ngay']].copy()
+            df_display.columns = ['Mã Tuyến', 'Điểm Xuất Phát', 'Điểm Đến', 'Giờ Xuất', 'Toàn Bộ Điểm Dừng', 'Trọng Tải (kg)', 'Số Chuyến']
             df_display = df_display.sort_values(['Điểm Xuất Phát', 'Giờ Xuất']).reset_index(drop=True)
 
             st.dataframe(
                 df_display,
-                use_container_width=True,
+                use_container_width=False,
                 height=500,
+                hide_index=True,
                 column_config={
-                    "Trọng Tải (kg)": st.column_config.NumberColumn(format="%d"),
+                    "Mã Tuyến": st.column_config.TextColumn(width="medium"),
+                    "Điểm Xuất Phát": st.column_config.TextColumn(width="medium"),
+                    "Điểm Đến": st.column_config.TextColumn(width="medium"),
+                    "Giờ Xuất": st.column_config.TextColumn(width="small"),
                     "Toàn Bộ Điểm Dừng": st.column_config.TextColumn(width="large"),
+                    "Trọng Tải (kg)": st.column_config.NumberColumn(format="%d", width="small"),
+                    "Số Chuyến": st.column_config.NumberColumn(width="small"),
                 }
             )
 
