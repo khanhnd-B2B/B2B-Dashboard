@@ -642,6 +642,9 @@ with tab4:
     st.markdown("---")
     st.markdown("<h3 style='color: #004b8b; text-decoration: underline;'>B. Tra Cứu Tuyến Cố Định</h3>", unsafe_allow_html=True)
     st.markdown("Tìm kiếm tuyến xe cố định theo điểm đi, điểm đến, hoặc mã tuyến. Bảng hiển thị giờ xuất phát, toàn bộ điểm dừng và trọng tải.")
+    with st.expander("System Debug Info"):
+        for msg in debug_msgs:
+            st.write(msg)
 
     route_files = [
         'data chuyến cố định 7 ngày gần nhất 9.9.xlsx',
