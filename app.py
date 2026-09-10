@@ -675,19 +675,21 @@ with tab4:
             df_routes['TrongTai'] = pd.to_numeric(df_routes['TrongTai'], errors='coerce').fillna(0).astype(int)
             df_routes['SoDiem'] = pd.to_numeric(df_routes['SoDiem'], errors='coerce').fillna(0).astype(int)
 
-            # Extract all unique locations (from DiemDauTien and DiemCuoiCung)
-            all_diem_dau = df_routes['DiemDauTien'].dropna().unique().tolist()
-            all_diem_cuoi = df_routes['DiemCuoiCung'].dropna().unique().tolist()
-            all_locations = sorted(set(all_diem_dau + all_diem_cuoi))
+            # Extract ALL unique stops from ToanBoDiemDi (split by →)
+            all_stops = set()
+            for route_str in df_routes['ToanBoDiemDi'].dropna():
+                stops = [s.strip() for s in str(route_str).split('→')]
+                all_stops.update(stops)
+            all_stops = sorted([s for s in all_stops if s])
 
             # Filters
             fc1, fc2, fc3 = st.columns(3)
             with fc1:
                 search_text = st.text_input("🔍 Tìm kiếm (mã tuyến, kho, điểm đi/đến):", "", key="route_search")
             with fc2:
-                filter_diem_dau = st.selectbox("📍 Lọc theo Điểm xuất phát:", ["Tất cả"] + sorted(set(all_diem_dau)), key="filter_dau")
+                filter_diem_di = st.selectbox("📍 Lọc theo Điểm đi (bất kỳ điểm trên tuyến):", ["Tất cả"] + all_stops, key="filter_dau")
             with fc3:
-                filter_diem_cuoi = st.selectbox("🏁 Lọc theo Điểm đến:", ["Tất cả"] + sorted(set(all_diem_cuoi)), key="filter_cuoi")
+                filter_diem_den = st.selectbox("🏁 Lọc theo Điểm đến (bất kỳ điểm trên tuyến):", ["Tất cả"] + all_stops, key="filter_cuoi")
 
             df_show = df_routes.copy()
             if search_text:
@@ -700,10 +702,10 @@ with tab4:
                     df_show['MaKho'].astype(str).str.lower().str.contains(search_lower, na=False)
                 )
                 df_show = df_show[mask]
-            if filter_diem_dau != "Tất cả":
-                df_show = df_show[df_show['DiemDauTien'] == filter_diem_dau]
-            if filter_diem_cuoi != "Tất cả":
-                df_show = df_show[df_show['DiemCuoiCung'] == filter_diem_cuoi]
+            if filter_diem_di != "Tất cả":
+                df_show = df_show[df_show['ToanBoDiemDi'].astype(str).str.contains(filter_diem_di, na=False, regex=False)]
+            if filter_diem_den != "Tất cả":
+                df_show = df_show[df_show['ToanBoDiemDi'].astype(str).str.contains(filter_diem_den, na=False, regex=False)]
 
             # Display metrics
             mc1, mc2, mc3 = st.columns(3)
