@@ -637,6 +637,99 @@ with tab4:
     else:
         st.error("Không tìm thấy file sơ đồ mạng lưới.")
 
+    # ---- BẢNG TRA CỨU TUYẾN CỐ ĐỊNH ----
+    st.markdown("---")
+    st.markdown("<h3 style='color: #004b8b; text-decoration: underline;'>B. Tra Cứu Tuyến Cố Định</h3>", unsafe_allow_html=True)
+    st.markdown("Tìm kiếm tuyến xe cố định theo điểm đi, điểm đến, hoặc mã tuyến. Bảng hiển thị giờ xuất phát, toàn bộ điểm dừng và trọng tải.")
+
+    route_files = [
+        'data chuyến cố định 7 ngày gần nhất 9.9.xlsx',
+        'data chuyến cố định 7 ngày gần nhất 3.9.xlsx',
+    ]
+    route_file_path = None
+    for rf in route_files:
+        p = os.path.join(os.path.dirname(__file__), rf)
+        if os.path.exists(p):
+            route_file_path = p
+            break
+
+    if route_file_path:
+        try:
+            df_routes_raw = pd.read_excel(route_file_path, header=1)
+            # Parse departure time
+            df_routes_raw['GioDuKienBatDau_GMT7'] = pd.to_datetime(df_routes_raw['GioDuKienBatDau_GMT7'], errors='coerce')
+
+            # Aggregate to unique routes
+            df_routes = df_routes_raw.groupby('MaTuyen').agg(
+                DiemDauTien=('DiemDauTien', 'first'),
+                DiemCuoiCung=('DiemCuoiCung', 'first'),
+                ToanBoDiemDi=('ToanBoDiemDi', 'first'),
+                GioXuatPhat=('GioDuKienBatDau_GMT7', 'first'),
+                TrongTai=('TrongTai', 'first'),
+                SoDiem=('SoDiem', 'first'),
+                SoLanChay7Ngay=('MaChuyen', 'nunique'),
+                MaKho=('MaKho', 'first')
+            ).reset_index()
+
+            df_routes['GioXuatPhat_Str'] = df_routes['GioXuatPhat'].dt.strftime('%H:%M').fillna('N/A')
+            df_routes['TrongTai'] = pd.to_numeric(df_routes['TrongTai'], errors='coerce').fillna(0).astype(int)
+            df_routes['SoDiem'] = pd.to_numeric(df_routes['SoDiem'], errors='coerce').fillna(0).astype(int)
+
+            # Extract all unique locations (from DiemDauTien and DiemCuoiCung)
+            all_diem_dau = df_routes['DiemDauTien'].dropna().unique().tolist()
+            all_diem_cuoi = df_routes['DiemCuoiCung'].dropna().unique().tolist()
+            all_locations = sorted(set(all_diem_dau + all_diem_cuoi))
+
+            # Filters
+            fc1, fc2, fc3 = st.columns(3)
+            with fc1:
+                search_text = st.text_input("🔍 Tìm kiếm (mã tuyến, kho, điểm đi/đến):", "", key="route_search")
+            with fc2:
+                filter_diem_dau = st.selectbox("📍 Lọc theo Điểm xuất phát:", ["Tất cả"] + sorted(set(all_diem_dau)), key="filter_dau")
+            with fc3:
+                filter_diem_cuoi = st.selectbox("🏁 Lọc theo Điểm đến:", ["Tất cả"] + sorted(set(all_diem_cuoi)), key="filter_cuoi")
+
+            df_show = df_routes.copy()
+            if search_text:
+                search_lower = search_text.lower()
+                mask = (
+                    df_show['MaTuyen'].astype(str).str.lower().str.contains(search_lower, na=False) |
+                    df_show['DiemDauTien'].astype(str).str.lower().str.contains(search_lower, na=False) |
+                    df_show['DiemCuoiCung'].astype(str).str.lower().str.contains(search_lower, na=False) |
+                    df_show['ToanBoDiemDi'].astype(str).str.lower().str.contains(search_lower, na=False) |
+                    df_show['MaKho'].astype(str).str.lower().str.contains(search_lower, na=False)
+                )
+                df_show = df_show[mask]
+            if filter_diem_dau != "Tất cả":
+                df_show = df_show[df_show['DiemDauTien'] == filter_diem_dau]
+            if filter_diem_cuoi != "Tất cả":
+                df_show = df_show[df_show['DiemCuoiCung'] == filter_diem_cuoi]
+
+            # Display metrics
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("Tổng tuyến tìm thấy", f"{len(df_show):,}")
+            mc2.metric("Tổng tuyến cố định", f"{len(df_routes):,}")
+            mc3.metric("Tổng chuyến (7 ngày)", f"{df_show['SoLanChay7Ngay'].sum():,}")
+
+            # Display table
+            df_display = df_show[['MaTuyen', 'DiemDauTien', 'DiemCuoiCung', 'GioXuatPhat_Str', 'ToanBoDiemDi', 'SoDiem', 'TrongTai', 'SoLanChay7Ngay', 'MaKho']].copy()
+            df_display.columns = ['Mã Tuyến', 'Điểm Xuất Phát', 'Điểm Đến', 'Giờ Xuất', 'Toàn Bộ Điểm Dừng', 'Số Điểm', 'Trọng Tải (kg)', 'Số Chuyến (7 ngày)', 'Mã Kho']
+            df_display = df_display.sort_values(['Điểm Xuất Phát', 'Giờ Xuất']).reset_index(drop=True)
+
+            st.dataframe(
+                df_display,
+                use_container_width=True,
+                height=500,
+                column_config={
+                    "Trọng Tải (kg)": st.column_config.NumberColumn(format="%d"),
+                    "Toàn Bộ Điểm Dừng": st.column_config.TextColumn(width="large"),
+                }
+            )
+
+            st.caption(f"📁 Nguồn dữ liệu: `{os.path.basename(route_file_path)}`")
+        except Exception as e:
+            st.error(f"Lỗi khi đọc file tuyến cố định: {e}")
+
 # Di chuyển thông tin sidebar xuống dưới cùng
 st.sidebar.markdown("---")
 st.sidebar.info(f"Đang đọc dữ liệu từ:\n\n`{master_file_path}`")
