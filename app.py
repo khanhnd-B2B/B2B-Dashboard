@@ -5,6 +5,7 @@ import plotly.express as px
 import os
 import requests
 import urllib.parse
+import re
 from datetime import datetime, timedelta
 
 pd.set_option("styler.render.max_elements", 5000000)
@@ -674,6 +675,31 @@ with tab4:
             df_routes['GioXuatPhat_Str'] = df_routes['GioXuatPhat'].dt.strftime('%H:%M').fillna('N/A')
             df_routes['TrongTai'] = pd.to_numeric(df_routes['TrongTai'], errors='coerce').fillna(0).astype(int)
             df_routes['SoDiem'] = pd.to_numeric(df_routes['SoDiem'], errors='coerce').fillna(0).astype(int)
+
+            # Append Sort Code to stops for robust searching
+            def enrich_stops(route_str):
+                if pd.isna(route_str): return route_str
+                stops = [s.strip() for s in str(route_str).split('→')]
+                new_stops = []
+                for s in stops:
+                    code = sort_map.get(s.lower())
+                    if code and f"[{code}]" not in s:
+                        new_stops.append(f"{s} [{code}]")
+                    else:
+                        new_stops.append(s)
+                return " → ".join(new_stops)
+
+            if sort_map:
+                df_routes['ToanBoDiemDi'] = df_routes['ToanBoDiemDi'].apply(enrich_stops)
+                
+                def enrich_single(s):
+                    if pd.isna(s): return s
+                    s_strip = str(s).strip()
+                    code = sort_map.get(s_strip.lower())
+                    if code and f"[{code}]" not in s_strip:
+                        return f"{s_strip} [{code}]"
+                    return s_strip
+                df_routes['DiemCuoiCung'] = df_routes['DiemCuoiCung'].apply(enrich_single)
 
             # Extract ALL unique stops from ToanBoDiemDi (split by →)
             all_stops = set()
