@@ -76,7 +76,7 @@ if not require_login():
     st.stop()
 
 # ==================== LOAD DATA ====================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800)
 def load_data():
     df = pd.DataFrame()
     source_used = ""
@@ -132,6 +132,16 @@ if df_raw.empty:
     st.stop()
 
 st.title("B2B DELIVERY REPORTING DASHBOARD")
+
+# Show data source info + reload button
+_max_date_loaded = df_raw['NgayNhap'].dropna().max().date() if 'NgayNhap' in df_raw.columns else 'N/A'
+_info_col, _btn_col = st.columns([4, 1])
+with _info_col:
+    st.caption(f"📦 Nguồn dữ liệu: `{master_file_path}` · Dữ liệu mới nhất: **{_max_date_loaded}** · Tổng: **{len(df_raw):,}** đơn")
+with _btn_col:
+    if st.button("🔄 Tải lại dữ liệu", help="Xóa cache và tải lại dữ liệu mới nhất"):
+        st.cache_data.clear()
+        st.rerun()
 
 df = df_raw.copy()
 
