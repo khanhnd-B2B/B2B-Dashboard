@@ -626,11 +626,30 @@ with tab3:
 with tab4:
     st.header("SƠ ĐỒ MẠNG LƯỚI B2B (INTERACTIVE MINDMAP)")
     st.markdown("Trực quan hóa cấu trúc mạng lưới phân cấp từ Kho nguồn đến các Kho Trung Chuyển (KTC), Kho Chuyển Tiếp (KCT), Kho Giao Hàng Nặng và Bưu Cục điểm cuối. Hỗ trợ tìm kiếm, mở/thu gọn nhánh, và tùy chỉnh thêm/bớt/đổi tuyến.")
-    
+
+    # Load sort code mapping from MASORTTONGHOP.xlsx
+    sort_map = {}
+    sort_debug_msgs = []
+    sort_file_path = os.path.join(os.path.dirname(__file__), 'MASORTTONGHOP.xlsx')
+    if os.path.exists(sort_file_path):
+        sort_debug_msgs.append(f"✅ File MASORTTONGHOP.xlsx tìm thấy trên server.")
+        try:
+            df_sort_master = pd.read_excel(sort_file_path, header=1)
+            for _, row in df_sort_master.dropna(subset=['KhoGiao', 'SortCode']).iterrows():
+                k = str(row['KhoGiao']).lower().strip()
+                v = str(row['SortCode']).strip()
+                if k not in sort_map:
+                    sort_map[k] = v
+            sort_debug_msgs.append(f"✅ Đã nạp {len(sort_map)} mã sort từ file.")
+        except Exception as e:
+            sort_debug_msgs.append(f"❌ Lỗi khi đọc file: {e}")
+    else:
+        sort_debug_msgs.append("❌ Không tìm thấy file MASORTTONGHOP.xlsx trên server!")
+
     html_file_path = os.path.join(os.path.dirname(__file__), "Network B2B — Lên Tuyến Trung Chuyển.html")
     if not os.path.exists(html_file_path):
         html_file_path = os.path.join(os.path.dirname(__file__), "network_graph.html")
-        
+
     if os.path.exists(html_file_path):
         with open(html_file_path, "r", encoding="utf-8") as f:
             html_content = f.read()
@@ -641,9 +660,9 @@ with tab4:
     # ---- BẢNG TRA CỨU TUYẾN CỐ ĐỊNH ----
     st.markdown("---")
     st.markdown("<h3 style='color: #004b8b; text-decoration: underline;'>B. Tra Cứu Tuyến Cố Định</h3>", unsafe_allow_html=True)
-    st.markdown("Tìm kiếm tuyến xe cố định theo điểm đi, điểm đến, hoặc mã tuyến. Bảng hiển thị giờ xuất phát, toàn bộ điểm dừng và trọng tải.")
-    with st.expander("System Debug Info"):
-        for msg in debug_msgs:
+    st.markdown("Tìm kiếm tuyến xe cố định theo điểm đi, điểm đến, hoặc **mã sort**. Bảng hiển thị giờ xuất phát, toàn bộ điểm dừng và trọng tải.")
+    with st.expander("🔧 System Debug Info"):
+        for msg in sort_debug_msgs:
             st.write(msg)
 
     route_files = [
