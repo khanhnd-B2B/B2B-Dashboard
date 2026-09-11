@@ -121,15 +121,14 @@ def extract_province(name):
     return 'Khác'
 
 VALID_ORIGINS = [
-    'Kho B2B - Đài Tư - Hà Nội',
-    'Kho Trung Chuyển Hà Nội 02',
-    'Kho Trung Chuyển Hưng Yên 01',
-    'Kho Trung Chuyển Dương Xá'
+    'Kho B2B - Đài Tư - Hà Nội'
 ]
 
 ORIGIN_EXCLUDED_STOPS = {
     'kho b2b - đài tư - hà nội',
-    'kho trung chuyển hà nội 02'
+    'kho trung chuyển hà nội 02',
+    'kho trung chuyển hưng yên 01',
+    'kho trung chuyển dương xá'
 }
 
 class B2BTonAdvisor:
@@ -199,14 +198,10 @@ class B2BTonAdvisor:
                 if s_lower in ORIGIN_EXCLUDED_STOPS:
                     continue
 
-                if 'hưng yên 01' in s_lower:
-                    provinces_served.update(['Hưng Yên', 'Nam Định', 'Ninh Bình', 'Hải Dương', 'Thái Bình', 'Hà Nam'])
+                if 'hồ chí minh' in s_lower:
+                    provinces_served.update(['Hồ Chí Minh', 'Bình Dương', 'Long An', 'Đồng Nai'])
                 elif 'sóng thần' in s_lower:
                     provinces_served.update(['Bình Dương', 'Hồ Chí Minh', 'Đồng Nai', 'Bình Phước'])
-                elif 'hồ chí minh' in s_lower:
-                    provinces_served.update(['Hồ Chí Minh', 'Bình Dương', 'Long An', 'Đồng Nai'])
-                elif 'dương xá' in s_lower:
-                    provinces_served.update(['Bắc Ninh', 'Hà Nội'])
                 else:
                     p = extract_province(s_name)
                     if p not in ['Khác', 'Tỉnh khác']:
@@ -258,8 +253,8 @@ class B2BTonAdvisor:
 
         total_kg = df['KG'].sum()
 
-        # Filter transit orders (KhoGiao != KhoHienTai)
-        df_transit = df[df['KhoGiao'] != df['KhoHienTai']].copy()
+        # Filter transit orders where KhoHienTai is strictly Dai Tu
+        df_transit = df[(df['KhoGiao'] != df['KhoHienTai']) & (df['KhoHienTai'].str.contains('Đài Tư|Dai Tu', case=False, na=False))].copy()
         transit_count = len(df_transit)
         transit_kg = df_transit['KG'].sum()
 
@@ -316,14 +311,14 @@ class B2BTonAdvisor:
 
         # Format Telegram Message as requested
         lines = []
-        lines.append("🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN GẦN NHẤT (1H30P TỚI)</b>")
+        lines.append("🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN ĐÀI TƯ (1H30P TỚI)</b>")
         lines.append(f"⏰ Thời điểm quét: <b>{now_str}</b> (Quét định kỳ 1h/lần)")
         lines.append(f"⏳ Khung giờ xuất bến: <b>{curr_time_str} ➔ {end_time_str}</b>")
         lines.append(f"📦 Tổng tồn Đài Tư: <b>{total_orders:,} đơn</b> · <b>{total_kg:,.1f} kg</b>")
         lines.append(f"🚚 Hàng cần đi các tỉnh: <b>{transit_count:,} đơn</b> · <b>{transit_kg:,.1f} kg</b>\n")
 
         if not route_reports:
-            lines.append("ℹ️ <i>Trong 1h30p tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>")
+            lines.append("ℹ️ <i>Trong 1h30p tới không có chuyến xe nào xuất phát từ Đài Tư khớp với các tỉnh có hàng tồn.</i>")
         else:
             lines.append(f"🚛 <b>DANH SÁCH LỊCH TẢI TUYẾN ({len(route_reports)} TUYẾN KHỚP LỊCH):</b>\n")
             # Liệt kê toàn bộ các tuyến, chỉ hiện tuyến xe và tỉnh tồn
