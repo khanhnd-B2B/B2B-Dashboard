@@ -121,14 +121,13 @@ def extract_province(name):
     return 'Khác'
 
 VALID_ORIGINS = [
-    'Kho B2B - Đài Tư - Hà Nội'
+    'Kho B2B - Đài Tư - Hà Nội',
+    'Kho Trung Chuyển Hà Nội 02'
 ]
 
 ORIGIN_EXCLUDED_STOPS = {
     'kho b2b - đài tư - hà nội',
-    'kho trung chuyển hà nội 02',
-    'kho trung chuyển hưng yên 01',
-    'kho trung chuyển dương xá'
+    'kho trung chuyển hà nội 02'
 }
 
 class B2BTonAdvisor:
@@ -146,9 +145,10 @@ class B2BTonAdvisor:
         self.df_truck['GioDuKienDen_GMT7'] = pd.to_datetime(self.df_truck['GioDuKienDen_GMT7'], errors='coerce')
         self.df_truck['HHMM'] = self.df_truck['GioDuKienDen_GMT7'].dt.strftime('%H:%M')
 
-        # Filter trips starting at Đài Tư / HN02 (prioritized)
+        # Filter trips starting at Đài Tư or HN02, strictly excluding HY_ routes
         stop1 = self.df_truck[self.df_truck['ThuTuDiem'] == 1]
-        self.b2b_stop1 = stop1[stop1['TenDiem'].isin(VALID_ORIGINS)].copy()
+        valid_stop1 = stop1[stop1['TenDiem'].isin(VALID_ORIGINS)].copy()
+        self.b2b_stop1 = valid_stop1[~valid_stop1['MaTuyen'].str.upper().str.startswith('HY_')].copy()
 
     def fetch_live_metabase(self):
         url = f'{METABASE_URL}/api/card/{CARD_ID}/query/json'
@@ -198,10 +198,15 @@ class B2BTonAdvisor:
                 if s_lower in ORIGIN_EXCLUDED_STOPS:
                     continue
 
-                if 'hồ chí minh' in s_lower:
+                if 'hưng yên 01' in s_lower:
+                    if 'HN_HY' in mt.upper():
+                        provinces_served.update(['Hưng Yên', 'Nam Định', 'Ninh Bình', 'Hải Dương', 'Thái Bình', 'Hà Nam'])
+                elif 'hồ chí minh' in s_lower:
                     provinces_served.update(['Hồ Chí Minh', 'Bình Dương', 'Long An', 'Đồng Nai'])
                 elif 'sóng thần' in s_lower:
                     provinces_served.update(['Bình Dương', 'Hồ Chí Minh', 'Đồng Nai', 'Bình Phước'])
+                elif 'dương xá' in s_lower:
+                    provinces_served.update(['Bắc Ninh', 'Hà Nội'])
                 else:
                     p = extract_province(s_name)
                     if p not in ['Khác', 'Tỉnh khác']:
@@ -311,14 +316,14 @@ class B2BTonAdvisor:
 
         # Format Telegram Message as requested
         lines = []
-        lines.append("🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN ĐÀI TƯ (1H30P TỚI)</b>")
+        lines.append("🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN (1H30P TỚI)</b>")
         lines.append(f"⏰ Thời điểm quét: <b>{now_str}</b> (Quét định kỳ 1h/lần)")
         lines.append(f"⏳ Khung giờ xuất bến: <b>{curr_time_str} ➔ {end_time_str}</b>")
         lines.append(f"📦 Tổng tồn Đài Tư: <b>{total_orders:,} đơn</b> · <b>{total_kg:,.1f} kg</b>")
         lines.append(f"🚚 Hàng cần đi các tỉnh: <b>{transit_count:,} đơn</b> · <b>{transit_kg:,.1f} kg</b>\n")
 
         if not route_reports:
-            lines.append("ℹ️ <i>Trong 1h30p tới không có chuyến xe nào xuất phát từ Đài Tư khớp với các tỉnh có hàng tồn.</i>")
+            lines.append("ℹ️ <i>Trong 1h30p tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>")
         else:
             lines.append(f"🚛 <b>DANH SÁCH LỊCH TẢI TUYẾN ({len(route_reports)} TUYẾN KHỚP LỊCH):</b>\n")
             # Liệt kê toàn bộ các tuyến, chỉ hiện tuyến xe và tỉnh tồn
