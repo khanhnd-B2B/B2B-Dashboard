@@ -17,6 +17,7 @@ CARD_ID = int(os.environ.get('METABASE_CARD_ID', 6287))
 
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '8370307476:AAEsPB2UZ0zQHMTEWPGFFBw7fUYuWsePxPM')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '-1004492922071')
+TELEGRAM_MESSAGE_THREAD_ID = int(os.environ.get('TELEGRAM_MESSAGE_THREAD_ID', 7090))
 
 TRUCK_FILE = os.path.join(os.path.dirname(__file__), 'data chuyến Truck 7 ngày 11.09.xlsx')
 
@@ -269,6 +270,13 @@ class B2BTonAdvisor:
         upcoming_trips = self.get_upcoming_trips_in_90min(now)
         print(f"Tìm thấy {len(upcoming_trips)} chuyến xe xuất bến trong khung giờ {curr_time_str} - {end_time_str}.")
 
+        def get_mins_diff(hhmm, current_dt):
+            h, m = map(int, hhmm.split(':'))
+            target = current_dt.replace(hour=h, minute=m, second=0, microsecond=0)
+            if (target - current_dt).total_seconds() < -1800:
+                target += timedelta(days=1)
+            return (target - current_dt).total_seconds() / 60
+
         route_reports = []
         for tdata in upcoming_trips:
             provinces_served = tdata['ProvincesServed']
@@ -276,22 +284,16 @@ class B2BTonAdvisor:
             if matched_backlog.empty:
                 continue
 
-            # Group by Province and KhoGiao
+            # Group by Province only (bỏ kho giao theo yêu cầu)
             prov_data = {}
             for prov in sorted(list(provinces_served)):
                 p_orders = matched_backlog[matched_backlog['Tinh'] == prov]
                 if p_orders.empty:
                     continue
 
-                kg_breakdown = p_orders.groupby('KhoGiao').agg(
-                    SoDon=('KhoGiao', 'count'),
-                    TongKG=('KG', 'sum')
-                ).reset_index().sort_values(by='TongKG', ascending=False)
-
                 prov_data[prov] = {
                     'SoDon': int(p_orders['KhoGiao'].count()),
-                    'TongKG': float(p_orders['KG'].sum()),
-                    'KhoGiaoList': kg_breakdown.to_dict('records')
+                    'TongKG': float(p_orders['KG'].sum())
                 }
 
             if prov_data:
@@ -305,11 +307,12 @@ class B2BTonAdvisor:
                     'TrongTai': tdata['TrongTai'],
                     'TotalOrders': total_route_orders,
                     'TotalKG': total_route_kg,
-                    'Provinces': prov_data
+                    'Provinces': prov_data,
+                    'MinsAway': get_mins_diff(tdata['HHMM'], now)
                 })
 
-        # Sort by departure time HHMM, then highest KG
-        route_reports.sort(key=lambda x: (x['HHMM'], -x['TotalKG']))
+        # Sort chronologically by minutes until departure, then highest KG
+        route_reports.sort(key=lambda x: (x['MinsAway'], -x['TotalKG']))
 
         # Format Telegram Message as requested
         lines = []
@@ -323,7 +326,8 @@ class B2BTonAdvisor:
             lines.append("ℹ️ <i>Trong 1h30p tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>")
         else:
             lines.append(f"🚛 <b>DANH SÁCH LỊCH TẢI TUYẾN ({len(route_reports)} TUYẾN KHỚP LỊCH):</b>\n")
-            for idx, r in enumerate(route_reports[:6], 1):
+            # Liệt kê toàn bộ các tuyến, chỉ hiện tuyến xe và tỉnh tồn
+            for idx, r in enumerate(route_reports, 1):
                 tt_str = f"{r['TrongTai']} kg" if r['TrongTai'] else "Xe cố định"
                 lines.append(
                     f"🚛 <b>{idx}. Tuyến <code>{r['MaTuyen']}</code> — Cung giờ: <b>{r['HHMM']}</b></b> (Tải xe: {tt_str})\n"
@@ -331,17 +335,7 @@ class B2BTonAdvisor:
                 )
                 for prov_name, pdata in r['Provinces'].items():
                     lines.append(f"   • <b>Tỉnh {prov_name}:</b> {pdata['SoDon']} đơn - {pdata['TongKG']:,.1f} kg")
-                    for kg_row in pdata['KhoGiaoList'][:3]:
-                        lines.append(f"     - {kg_row['KhoGiao']}: {kg_row['SoDon']} đơn - {kg_row['TongKG']:,.1f} kg")
-                    if len(pdata['KhoGiaoList']) > 3:
-                        rem_cnt = sum(k['SoDon'] for k in pdata['KhoGiaoList'][3:])
-                        rem_kg = sum(k['TongKG'] for k in pdata['KhoGiaoList'][3:])
-                        lines.append(f"     <i>... và {len(pdata['KhoGiaoList']) - 3} kho khác ({rem_cnt} đơn - {rem_kg:,.1f} kg)</i>")
                 lines.append("")
-
-            if len(route_reports) > 6:
-                rem_routes = len(route_reports) - 6
-                lines.append(f"<i>... và còn {rem_routes} tuyến xe khác xuất bến trong 1h30p tới.</i>\n")
 
         lines.append("👉 <i>Vui lòng ưu tiên gom và xếp hàng lên các chuyến xe có giờ xuất bến sớm nhất!</i>")
         msg = "\n".join(lines)
@@ -381,11 +375,18 @@ class B2BTonAdvisor:
                 chunks.append('\n'.join(current_chunk))
 
         for idx, chunk in enumerate(chunks, 1):
-            payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk, "parse_mode": "HTML"}
+            payload = {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": chunk,
+                "parse_mode": "HTML"
+            }
+            if TELEGRAM_MESSAGE_THREAD_ID:
+                payload["message_thread_id"] = TELEGRAM_MESSAGE_THREAD_ID
             try:
                 r = requests.post(url, json=payload, timeout=15)
                 r.raise_for_status()
-                print(f"✅ Đã gửi phần {idx}/{len(chunks)} lên Telegram Channel thành công!")
+                target_desc = f"Topic {TELEGRAM_MESSAGE_THREAD_ID}" if TELEGRAM_MESSAGE_THREAD_ID else "Channel"
+                print(f"✅ Đã gửi phần {idx}/{len(chunks)} lên Telegram {target_desc} thành công!")
             except Exception as e:
                 print(f"❌ Lỗi gửi Telegram phần {idx}: {e}")
 
