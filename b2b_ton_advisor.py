@@ -1,10 +1,12 @@
 import requests
 import json
 import pandas as pd
+import re
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+from collections import defaultdict
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -16,98 +18,167 @@ CARD_ID = int(os.environ.get('METABASE_CARD_ID', 6287))
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '8370307476:AAEsPB2UZ0zQHMTEWPGFFBw7fUYuWsePxPM')
 TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '-1004492922071')
 
-TRIPS_FILE = os.path.join(os.path.dirname(__file__), 'data chuyến cố định 7 ngày gần nhất 3.9.xlsx')
+TRUCK_FILE = os.path.join(os.path.dirname(__file__), 'data chuyến Truck 7 ngày 11.09.xlsx')
 
-# Destination routing map from HN02 (Đài Tư)
-# Maps region/province to target hub and route prefix preference
-REGION_ROUTING = {
-    # Hưng Yên Hub & provinces routed via Hưng Yên
-    'hưng yên': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên'},
-    'ân thi': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên ➔ Ân Thi'},
-    'phố hiến': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên ➔ Phố Hiến'},
-    'mỹ lộc': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên ➔ Nam Định'},
-    'nam định': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên ➔ Nam Định'},
-    'ninh bình': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên ➔ Ninh Bình'},
-    'yên khánh': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên ➔ Ninh Bình'},
-    'hải dương': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên ➔ Hải Dương'},
-    'thái bình': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên ➔ Thái Bình'},
-    'hà nam': {'hub': 'Kho Trung Chuyển Hưng Yên 01', 'shuttle_prefix': 'HN_HY_', 'desc': 'HN02 ➔ TC Hưng Yên ➔ Hà Nam'},
-    
-    # Direct provincial KCTs from HN02
-    'thanh hoá': {'hub': 'Kho Chuyển Tiếp Thanh Hóa', 'shuttle_prefix': 'HN_TH_', 'desc': 'Tuyến đi Thanh Hóa'},
-    'thanh hóa': {'hub': 'Kho Chuyển Tiếp Thanh Hóa', 'shuttle_prefix': 'HN_TH_', 'desc': 'Tuyến đi Thanh Hóa'},
-    'nghệ an': {'hub': 'Kho Trung Chuyển Nghệ An', 'shuttle_prefix': 'HN_NA_', 'desc': 'Tuyến đi Nghệ An'},
-    'vinh': {'hub': 'Kho Trung Chuyển Nghệ An', 'shuttle_prefix': 'HN_NA_', 'desc': 'Tuyến đi Nghệ An'},
-    'hải phòng': {'hub': 'Kho Chuyển Tiếp Hải Phòng', 'shuttle_prefix': 'HN_HaiPhong_', 'desc': 'Tuyến đi Hải Phòng'},
-    'quảng ninh': {'hub': 'Kho Chuyển Tiếp Quảng Ninh', 'shuttle_prefix': 'HN_QuangNinh_', 'desc': 'Tuyến đi Quảng Ninh'},
-    'thái nguyên': {'hub': 'Kho Chuyển Tiếp Thái Nguyên', 'shuttle_prefix': 'HN_ThaiNguyen_', 'desc': 'Tuyến đi Thái Nguyên'},
-    'lạng sơn': {'hub': 'Kho Chuyển Tiếp Lạng Sơn', 'shuttle_prefix': 'HN_LangSon_', 'desc': 'Tuyến đi Lạng Sơn'},
-    'phú thọ': {'hub': 'Kho Chuyển Tiếp Phú Thọ', 'shuttle_prefix': 'HN_PhuTho_', 'desc': 'Tuyến đi Phú Thọ'},
-    'vĩnh phúc': {'hub': 'Kho Chuyển Tiếp Vĩnh Phúc', 'shuttle_prefix': 'HN_VinhPhuc_', 'desc': 'Tuyến đi Vĩnh Phúc'},
-    'bắc giang': {'hub': 'Kho Chuyển Tiếp Bắc Giang', 'shuttle_prefix': 'BacGiang_', 'desc': 'Tuyến đi Bắc Giang'},
-    'yên bái': {'hub': 'Kho Chuyển Tiếp Yên Bái', 'shuttle_prefix': 'YenBai_', 'desc': 'Tuyến đi Yên Bái'},
-    'sơn la': {'hub': 'Kho Chuyển Tiếp Sơn La', 'shuttle_prefix': 'HN_SonLa_', 'desc': 'Tuyến đi Sơn La'},
-    'hòa bình': {'hub': 'Kho Chuyển Tiếp Hoà Bình', 'shuttle_prefix': 'HoaBinh_', 'desc': 'Tuyến đi Hoà Bình'},
-    'hoà bình': {'hub': 'Kho Chuyển Tiếp Hoà Bình', 'shuttle_prefix': 'HoaBinh_', 'desc': 'Tuyến đi Hoà Bình'},
-    'lào cai': {'hub': 'Kho Chuyển Tiếp Lào Cai', 'shuttle_prefix': 'HN_LaoCai_', 'desc': 'Tuyến đi Lào Cai'},
-    'tuyên quang': {'hub': 'Kho Chuyển Tiếp Tuyên Quang', 'shuttle_prefix': 'TuyenQuang_', 'desc': 'Tuyến đi Tuyên Quang'},
-    
-    # Miền Trung & Miền Nam
-    'đà nẵng': {'hub': 'Kho Trung Chuyển Đà Nẵng', 'shuttle_prefix': 'HN_ĐN_', 'desc': 'Tuyến đi Đà Nẵng'},
-    'hồ chí minh': {'hub': 'Kho Trung Chuyển Hồ Chí Minh 01', 'shuttle_prefix': 'HN_HCM', 'desc': 'Tuyến đi Hồ Chí Minh'},
-    'hcm': {'hub': 'Kho Trung Chuyển Hồ Chí Minh 01', 'shuttle_prefix': 'HN_HCM', 'desc': 'Tuyến đi Hồ Chí Minh'},
-    'thủ đức': {'hub': 'Kho Trung Chuyển Hồ Chí Minh 01', 'shuttle_prefix': 'HN_HCM', 'desc': 'Tuyến đi TP Thủ Đức (HCM)'},
-    'bình dương': {'hub': 'Kho Chuyển Tiếp Sóng Thần-Bình Dương', 'shuttle_prefix': 'HN_HCM', 'desc': 'Tuyến đi Sóng Thần - Bình Dương'},
-    'sóng thần': {'hub': 'Kho Chuyển Tiếp Sóng Thần-Bình Dương', 'shuttle_prefix': 'HN_HCM', 'desc': 'Tuyến đi Sóng Thần - Bình Dương'},
-    'dĩ an': {'hub': 'Kho Chuyển Tiếp Sóng Thần-Bình Dương', 'shuttle_prefix': 'HN_HCM', 'desc': 'Tuyến đi Sóng Thần - Bình Dương'},
-    'đồng nai': {'hub': 'Kho Chuyển Tiếp Đồng Nai', 'shuttle_prefix': 'HN_ĐNAI_', 'desc': 'Tuyến đi Đồng Nai'},
-    'long an': {'hub': 'Kho Trung Chuyển Hồ Chí Minh 01', 'shuttle_prefix': 'HN_HCM', 'desc': 'Tuyến đi Long An (qua HCM)'},
-    'đức hòa': {'hub': 'Kho Trung Chuyển Hồ Chí Minh 01', 'shuttle_prefix': 'HN_HCM', 'desc': 'Tuyến đi Đức Hòa (qua HCM)'},
-    
-    # Bắc Ninh & Nội thành Hà Nội (Dương Xá / Đài Tư)
-    'bắc ninh': {'hub': 'Kho Trung Chuyển Dương Xá', 'shuttle_prefix': 'LB_LAYHN_', 'desc': 'Tuyến Bắc Ninh / Dương Xá'},
-    'tiên du': {'hub': 'Kho Trung Chuyển Dương Xá', 'shuttle_prefix': 'LB_LAYHN_', 'desc': 'Tuyến Bắc Ninh / Dương Xá'},
-    'dương xá': {'hub': 'Kho Trung Chuyển Dương Xá', 'shuttle_prefix': 'HN_HY_DX_', 'desc': 'Tuyến Dương Xá'},
+PREFIX_TO_PROVINCE = {
+    'HNO': 'Hà Nội', 'HN': 'Hà Nội',
+    'QNI': 'Quảng Ninh', 'QN': 'Quảng Ninh',
+    'BGI': 'Bắc Giang', 'BG': 'Bắc Giang',
+    'BNI': 'Bắc Ninh', 'BN': 'Bắc Ninh',
+    'THO': 'Thanh Hóa', 'TH': 'Thanh Hóa',
+    'NAN': 'Nghệ An', 'NA': 'Nghệ An',
+    'HPG': 'Hải Phòng', 'HP': 'Hải Phòng', 'HPH': 'Hải Phòng',
+    'HDU': 'Hải Dương', 'HD': 'Hải Dương',
+    'HYE': 'Hưng Yên', 'HY': 'Hưng Yên',
+    'NDI': 'Nam Định', 'NĐ': 'Nam Định',
+    'NBI': 'Ninh Bình', 'NB': 'Ninh Bình',
+    'TBH': 'Thái Bình', 'TB': 'Thái Bình', 'TBI': 'Thái Bình',
+    'HNA': 'Hà Nam', 'HNAM': 'Hà Nam',
+    'THN': 'Thái Nguyên', 'TN': 'Thái Nguyên',
+    'LSN': 'Lạng Sơn', 'LS': 'Lạng Sơn', 'LSO': 'Lạng Sơn',
+    'PTO': 'Phú Thọ', 'PT': 'Phú Thọ', 'PTH': 'Phú Thọ',
+    'VPH': 'Vĩnh Phúc', 'VP': 'Vĩnh Phúc',
+    'HBI': 'Hòa Bình', 'HB': 'Hòa Bình',
+    'SLA': 'Sơn La', 'SL': 'Sơn La',
+    'LCA': 'Lào Cai', 'LC': 'Lào Cai',
+    'YBA': 'Yên Bái', 'YB': 'Yên Bái',
+    'TQG': 'Tuyên Quang', 'TQ': 'Tuyên Quang',
+    'HAG': 'Hà Giang', 'HG': 'Hà Giang',
+    'DNA': 'Đà Nẵng', 'ĐN': 'Đà Nẵng', 'DNG': 'Đà Nẵng',
+    'SGN': 'Hồ Chí Minh', 'HCM': 'Hồ Chí Minh',
+    'BDU': 'Bình Dương', 'BD': 'Bình Dương',
+    'DNI': 'Đồng Nai', 'ĐNAI': 'Đồng Nai',
+    'LAN': 'Long An', 'LA': 'Long An',
+    'BPC': 'Bình Phước', 'BP': 'Bình Phước', 'BPH': 'Bình Phước',
+    'BTH': 'Bình Thuận', 'BT': 'Bình Thuận', 'NTH': 'Ninh Thuận',
+    'QBI': 'Quảng Bình', 'QB': 'Quảng Bình',
+    'QTI': 'Quảng Trị', 'QT': 'Quảng Trị', 'QTR': 'Quảng Trị',
+    'TTH': 'Thừa Thiên Huế', 'HUE': 'Thừa Thiên Huế',
+    'QNA': 'Quảng Nam', 'QNM': 'Quảng Nam',
+    'QNG': 'Quảng Ngãi', 'QNGA': 'Quảng Ngãi',
+    'BDI': 'Bình Định', 'BĐ': 'Bình Định',
+    'PYE': 'Phú Yên', 'PY': 'Phú Yên',
+    'KHA': 'Khánh Hòa', 'KH': 'Khánh Hòa',
+    'GLI': 'Gia Lai', 'GL': 'Gia Lai',
+    'DKL': 'Đắk Lắk', 'DLK': 'Đắk Lắk',
+    'DKN': 'Đắk Nông', 'DNO': 'Đắk Nông',
+    'LDG': 'Lâm Đồng', 'LĐ': 'Lâm Đồng',
+    'CTO': 'Cần Thơ', 'CT': 'Cần Thơ',
+    'KGG': 'Kiên Giang', 'KG': 'Kiên Giang', 'KGI': 'Kiên Giang',
+    'AGG': 'An Giang', 'AG': 'An Giang',
+    'CMU': 'Cà Mau', 'CM': 'Cà Mau',
+    'BKA': 'Bắc Kạn', 'DBI': 'Điện Biên',
+    'STR': 'Sóc Trăng', 'TNI': 'Tây Ninh',
+    'KTU': 'Kon Tum', 'CBA': 'Cao Bằng',
 }
+
+PROVINCES_LIST = [
+    'Quảng Ninh', 'Bắc Giang', 'Bắc Ninh', 'Thanh Hóa', 'Thanh Hoá', 'Nghệ An',
+    'Hải Phòng', 'Hải Dương', 'Hưng Yên', 'Nam Định', 'Ninh Bình', 'Thái Bình',
+    'Hà Nam', 'Thái Nguyên', 'Lạng Sơn', 'Phú Thọ', 'Vĩnh Phúc', 'Hòa Bình',
+    'Hoà Bình', 'Sơn La', 'Lào Cai', 'Yên Bái', 'Tuyên Quang', 'Hà Giang',
+    'Đà Nẵng', 'Hồ Chí Minh', 'HCM', 'Bình Dương', 'Đồng Nai', 'Long An',
+    'Bình Phước', 'Bình Thuận', 'Quảng Bình', 'Quảng Trị', 'Thừa Thiên Huế',
+    'Huế', 'Quảng Nam', 'Quảng Ngãi', 'Bình Định', 'Phú Yên', 'Khánh Hòa',
+    'Khánh Hoà', 'Gia Lai', 'Đắk Lắk', 'Đắk Nông', 'Lâm Đồng', 'Cần Thơ',
+    'Kiên Giang', 'An Giang', 'Cà Mau', 'Hà Nội', 'Hà Tĩnh', 'Bà Rịa - Vũng Tàu',
+    'BRVT', 'Đồng Tháp', 'Trà Vinh', 'Ninh Thuận', 'Tây Ninh'
+]
+
+def extract_province(kho_giao):
+    name = str(kho_giao).strip()
+    m = re.match(r'^\(([A-Za-z0-9]+)\)', name)
+    if m:
+        pfx = m.group(1).upper()
+        if pfx in PREFIX_TO_PROVINCE:
+            return PREFIX_TO_PROVINCE[pfx]
+
+    parts = name.split('-')
+    if len(parts) >= 2:
+        last_part = parts[-1].strip()
+        for p in PROVINCES_LIST:
+            if p.lower() == last_part.lower():
+                if 'thanh ho' in p.lower(): return 'Thanh Hóa'
+                if 'hoà bình' in p.lower() or 'hòa bình' in p.lower(): return 'Hòa Bình'
+                if 'khánh ho' in p.lower(): return 'Khánh Hòa'
+                if 'brvt' in p.lower() or 'vũng tàu' in p.lower(): return 'Bà Rịa - Vũng Tàu'
+                if p == 'HCM': return 'Hồ Chí Minh'
+                return p
+
+    for p in PROVINCES_LIST:
+        if p.lower() in name.lower():
+            if 'thanh ho' in p.lower(): return 'Thanh Hóa'
+            if 'hoà bình' in p.lower() or 'hòa bình' in p.lower(): return 'Hòa Bình'
+            if 'khánh ho' in p.lower(): return 'Khánh Hòa'
+            if 'brvt' in p.lower() or 'vũng tàu' in p.lower(): return 'Bà Rịa - Vũng Tàu'
+            if p == 'HCM': return 'Hồ Chí Minh'
+            return p
+
+    if any(k in name.lower() for k in ['hà nội', 'long biên', 'thanh xuân', 'hoài đức', 'cầu giấy', 'ba đình', 'đông anh', 'mê linh', 'sóc sơn', 'tây hồ', 'hoàn kiếm', 'đống đa', 'hai bà trưng', 'thanh trì', 'hoàng mai', 'hà đông', 'nam từ liêm', 'bắc từ liêm']):
+        return 'Hà Nội'
+
+    return 'Tỉnh khác'
+
+PROVINCE_TO_HUB_KEYWORDS = {
+    'Quảng Ninh': ['Quảng Ninh', 'QuangNinh', 'Mạo Khê', 'Hạ Long', 'Móng Cái', 'HN_QuangNinh_'],
+    'Thanh Hóa': ['Thanh Hóa', 'Thanh Hoá', 'HN_TH_'],
+    'Nghệ An': ['Nghệ An', 'Vinh', 'HN_NA_'],
+    'Thái Nguyên': ['Thái Nguyên', 'ThaiNguyen', 'HN_ThaiNguyen_'],
+    'Lạng Sơn': ['Lạng Sơn', 'LangSon', 'HN_LangSon_'],
+    'Lào Cai': ['Lào Cai', 'LaoCai', 'HN_LaoCai_'],
+    'Yên Bái': ['Yên Bái', 'YenBai'],
+    'Hải Phòng': ['Hải Phòng', 'HaiPhong', 'HN_HaiPhong_'],
+    'Bắc Giang': ['Bắc Giang', 'BacGiang'],
+    'Phú Thọ': ['Phú Thọ', 'PhuTho'],
+    'Vĩnh Phúc': ['Vĩnh Phúc', 'VinhPhuc'],
+    'Hòa Bình': ['Hòa Bình', 'Hoà Bình', 'HoaBinh'],
+    'Sơn La': ['Sơn La', 'SonLa'],
+    'Tuyên Quang': ['Tuyên Quang', 'TuyenQuang'],
+    'Hà Giang': ['Hà Giang', 'HaGiang'],
+    'Bắc Ninh': ['Bắc Ninh', 'BacNinh', 'Tiên Du', 'Dương Xá'],
+    'Hưng Yên': ['Hưng Yên', 'HungYen', 'HN_HY_'],
+    'Nam Định': ['Hưng Yên', 'Nam Định', 'Mỹ Lộc', 'HN_HY_'],
+    'Ninh Bình': ['Hưng Yên', 'Ninh Bình', 'HN_HY_'],
+    'Hải Dương': ['Hưng Yên', 'Hải Dương', 'HN_HY_'],
+    'Thái Bình': ['Hưng Yên', 'Thái Bình', 'HN_HY_'],
+    'Hà Nam': ['Hưng Yên', 'Hà Nam', 'HN_HY_'],
+    'Đà Nẵng': ['Đà Nẵng', 'DaNang', 'HN_ĐN_'],
+    'Hồ Chí Minh': ['Hồ Chí Minh', 'HCM', 'HN_HCM'],
+    'Bình Dương': ['Bình Dương', 'Sóng Thần', 'SongThan', 'HN_HCM', 'HN_BinhPhuoc'],
+    'Đồng Nai': ['Đồng Nai', 'DongNai', 'HN_ĐNAI'],
+    'Long An': ['Đức Hòa', 'Long An', 'HN_HCM'],
+    'Bình Phước': ['Bình Phước', 'BinhPhuoc', 'HN_BinhPhuoc'],
+    'Khánh Hòa': ['Khánh Hòa', 'Khánh Hoà', 'Nha Trang', 'HN_KH_'],
+    'Hà Nội': ['Dương Xá', 'Đài Tư', 'LAYHN', 'CKHNO']
+}
+
+VALID_ORIGINS = [
+    'Kho B2B - Đài Tư - Hà Nội',
+    'Kho Trung Chuyển Hà Nội 02',
+    'Kho Trung Chuyển Hưng Yên 01',
+    'Kho Trung Chuyển Dương Xá'
+]
 
 class B2BTonAdvisor:
     def __init__(self, session_token=METABASE_SESSION):
         self.session_token = session_token
-        self._load_trips()
+        self._load_truck_data()
 
-    def _load_trips(self):
-        if not os.path.exists(TRIPS_FILE):
-            print(f"Warning: Không tìm thấy file {TRIPS_FILE}")
-            self.routes = {}
+    def _load_truck_data(self):
+        if not os.path.exists(TRUCK_FILE):
+            print(f"Warning: Không tìm thấy file {TRUCK_FILE}")
+            self.df_truck = None
             return
 
-        df_trips = pd.read_excel(TRIPS_FILE, header=1)
-        df_trips['GioDuKienBatDau_GMT7'] = pd.to_datetime(df_trips['GioDuKienBatDau_GMT7'], errors='coerce')
-        df_trips['Time_HHMM'] = df_trips['GioDuKienBatDau_GMT7'].dt.strftime('%H:%M')
+        self.df_truck = pd.read_excel(TRUCK_FILE, header=1)
+        self.df_truck['GioDuKienDen_GMT7'] = pd.to_datetime(self.df_truck['GioDuKienDen_GMT7'], errors='coerce')
+        self.df_truck['HHMM'] = self.df_truck['GioDuKienDen_GMT7'].dt.strftime('%H:%M')
 
-        # Routes departing from Đài Tư (LDTSC)
-        df_ldtsc = df_trips[df_trips['MaKho'] == 'LDTSC'].copy()
-        self.routes = {}
-        for _, row in df_ldtsc.iterrows():
-            mt = str(row['MaTuyen']).strip()
-            stops_str = str(row['ToanBoDiemDi']).strip()
-            stops = [s.strip() for s in stops_str.split('→')]
-            hhmm = row['Time_HHMM']
-            trongtai = row.get('TrongTai', 0)
+        # Filter trips whose first stop (ThuTuDiem == 1) is B2B Đài Tư or B2B Hưng Yên / Dương Xá
+        stop1 = self.df_truck[self.df_truck['ThuTuDiem'] == 1]
+        self.b2b_stop1 = stop1[stop1['TenDiem'].isin(VALID_ORIGINS)].copy()
 
-            if mt not in self.routes:
-                self.routes[mt] = {
-                    'MaTuyen': mt,
-                    'ToanBoDiemDi': stops_str,
-                    'Stops': stops,
-                    'StopsLower': [s.lower() for s in stops],
-                    'Hours': set(),
-                    'TrongTai': trongtai
-                }
-            if pd.notna(hhmm):
-                self.routes[mt]['Hours'].add(hhmm)
-
-    def fetch_live_data(self):
+    def fetch_live_metabase(self):
         url = f'{METABASE_URL}/api/card/{CARD_ID}/query/json'
         headers = {
             'X-Metabase-Session': self.session_token,
@@ -118,96 +189,55 @@ class B2BTonAdvisor:
         res.raise_for_status()
         return pd.DataFrame(res.json())
 
-    def match_route(self, kho_giao, current_time):
-        kg_clean = kho_giao.strip().lower()
-        curr_hhmm = current_time.strftime('%H:%M')
+    def get_upcoming_trips_in_2hours(self, current_time):
+        if self.df_truck is None:
+            return []
 
-        matched = []
-        routing_info = None
+        curr_time_str = current_time.strftime('%H:%M')
+        window_end = current_time + timedelta(hours=2)
+        end_time_str = window_end.strftime('%H:%M')
 
-        # 1. Check if matches REGION_ROUTING dictionary
-        for kw, r_info in REGION_ROUTING.items():
-            if kw in kg_clean:
-                routing_info = r_info
-                target_hub = r_info['hub'].lower()
-                shuttle_pfx = r_info['shuttle_prefix']
-                
-                # First check for direct shuttles matching prefix
-                for mt, rdata in self.routes.items():
-                    if mt.startswith(shuttle_pfx) or shuttle_pfx in mt:
-                        # Ensure target hub is an early stop (stop 1 or 2)
-                        for idx, s in enumerate(rdata['StopsLower']):
-                            if target_hub in s and idx <= 2:
-                                matched.append((mt, rdata, rdata['Stops'][idx], r_info['desc'], idx, True))
-                                break
-                                
-                # If no prefix match, check routes that stop at target hub early
-                if not matched:
-                    for mt, rdata in self.routes.items():
-                        for idx, s in enumerate(rdata['StopsLower']):
-                            if target_hub in s and idx <= 2:
-                                matched.append((mt, rdata, rdata['Stops'][idx], r_info['desc'], idx, False))
-                                break
-                if matched:
-                    break
+        # Filter stop 1 in the 2-hour window
+        if end_time_str < curr_time_str:  # crosses midnight
+            upcoming_stop1 = self.b2b_stop1[(self.b2b_stop1['HHMM'] >= curr_time_str) | (self.b2b_stop1['HHMM'] <= end_time_str)]
+        else:
+            upcoming_stop1 = self.b2b_stop1[(self.b2b_stop1['HHMM'] >= curr_time_str) & (self.b2b_stop1['HHMM'] <= end_time_str)]
 
-        # 2. Check direct stop match in all routes
-        if not matched:
-            for mt, rdata in self.routes.items():
-                for idx, s in enumerate(rdata['StopsLower']):
-                    if kg_clean in s or s in kg_clean:
-                        matched.append((mt, rdata, rdata['Stops'][idx], "Tuyến thẳng", idx, True))
-                        break
+        unique_trips = upcoming_stop1.drop_duplicates(subset=['MaTuyen', 'HHMM']).sort_values('HHMM')
 
-        # 3. Hanoi local
-        if not matched and any(k in kg_clean for k in ['(hno)', 'hà nội', 'hn']):
-            for mt, rdata in self.routes.items():
-                if 'dương xá' in rdata['ToanBoDiemDi'].lower() or 'ckhno' in mt.lower() or 'layhn' in mt.lower():
-                    matched.append((mt, rdata, "Nội thành HN / KTC Dương Xá", "Nội thành HN", 1, True))
+        trips_list = []
+        for _, r in unique_trips.iterrows():
+            mc = r['MaChuyen']
+            mt = r['MaTuyen']
+            hh = r['HHMM']
+            td = r['TenDiem']
+            tt = r.get('TrongTai', 0)
 
-        if not matched:
-            return None
-
-        # Calculate nearest departure time
-        results = []
-        for mt, rdata, target_stop, r_type, stop_idx, is_prio in matched:
-            hours = sorted(list(rdata['Hours']))
-            if not hours:
-                continue
-            next_h = None
-            for h in hours:
-                if h >= curr_hhmm:
-                    next_h = h
-                    break
-            is_tomorrow = False
-            if next_h is None:
-                next_h = hours[0]
-                is_tomorrow = True
-
-            results.append({
+            trip_rows = self.df_truck[self.df_truck['MaChuyen'] == mc].sort_values('ThuTuDiem')
+            stops = list(trip_rows['TenDiem'])
+            trips_list.append({
+                'MaChuyen': mc,
                 'MaTuyen': mt,
-                'RouteType': r_type,
-                'TargetStop': target_stop,
-                'NextHour': next_h,
-                'IsTomorrow': is_tomorrow,
-                'AllHours': hours,
-                'StopIdx': stop_idx,
-                'IsPrio': is_prio,
-                'TrongTai': rdata.get('TrongTai', 0),
-                'ToanBoDiemDi': rdata['ToanBoDiemDi']
+                'HHMM': hh,
+                'Origin': td,
+                'TrongTai': tt,
+                'Stops': stops,
+                'StopsLower': [s.lower() for s in stops]
             })
 
-        # Sort: IsTomorrow (False first), NextHour (earliest), IsPrio (True first), StopIdx (earliest stop)
-        results.sort(key=lambda x: (x['IsTomorrow'], x['NextHour'], not x['IsPrio'], x['StopIdx']))
-        return results[0] if results else None
+        return trips_list
 
     def process_and_report(self, send_tele=True):
         now = datetime.now()
         now_str = now.strftime('%H:%M %d/%m/%Y')
-        print(f"[{now_str}] Đang lấy dữ liệu từ Metabase Card {CARD_ID}...")
+        curr_time_str = now.strftime('%H:%M')
+        window_end = now + timedelta(hours=2)
+        end_time_str = window_end.strftime('%H:%M')
+
+        print(f"[{now_str}] Đang quét đơn tồn Metabase & Lịch xe trong vòng 2 tiếng ({curr_time_str} ➔ {end_time_str})...")
 
         try:
-            df = self.fetch_live_data()
+            df = self.fetch_live_metabase()
         except Exception as e:
             err_msg = (
                 f"⚠️ <b>LỖI KẾT NỐI METABASE (Card {CARD_ID}):</b>\n"
@@ -221,7 +251,7 @@ class B2BTonAdvisor:
 
         total_orders = len(df)
 
-        # Extract KG column (priority: KL_TinhCuoc_Kg -> CanNangThucTe_Kg -> CanNangQuyDoi_Kg)
+        # Extract KG column
         for col in ['KL_TinhCuoc_Kg', 'CanNangThucTe_Kg', 'CanNangQuyDoi_Kg']:
             if col in df.columns:
                 df['KG'] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -236,81 +266,101 @@ class B2BTonAdvisor:
         transit_count = len(df_transit)
         transit_kg = df_transit['KG'].sum()
 
-        # Group by KhoGiao
-        grouped = df_transit.groupby('KhoGiao').agg(
+        # Extract Province for each order
+        df_transit['Tinh'] = df_transit['KhoGiao'].apply(extract_province)
+
+        # Group by Tỉnh and KhoGiao
+        prov_group = df_transit.groupby(['Tinh', 'KhoGiao']).agg(
             SoDon=('KhoGiao', 'count'),
             TongKG=('KG', 'sum')
         ).reset_index()
 
-        summary = []
-        for _, row in grouped.iterrows():
-            kg = row['KhoGiao']
-            cnt = int(row['SoDon'])
-            kg_weight = float(row['TongKG'])
+        # Get trips departing in the next 2 hours
+        upcoming_trips = self.get_upcoming_trips_in_2hours(now)
+        print(f"Tìm thấy {len(upcoming_trips)} chuyến xe xuất bến từ Đài Tư/Hưng Yên trong khung giờ {curr_time_str} - {end_time_str}.")
 
-            match = self.match_route(kg, now)
-            if match:
-                tm_str = f"{match['NextHour']} (Hôm nay)" if not match['IsTomorrow'] else f"{match['NextHour']} (Ngày mai)"
-                summary.append({
-                    'KhoGiao': kg,
-                    'SoDon': cnt,
-                    'TongKG': kg_weight,
-                    'MaTuyen': match['MaTuyen'],
-                    'RouteType': match['RouteType'],
-                    'GioXuatBen': tm_str,
-                    'GioGoc': match['NextHour'],
-                    'IsTomorrow': match['IsTomorrow'],
-                    'AllHours': ", ".join(match['AllHours']),
-                    'TrongTai': match.get('TrongTai', 0)
-                })
-            else:
-                summary.append({
-                    'KhoGiao': kg,
-                    'SoDon': cnt,
-                    'TongKG': kg_weight,
-                    'MaTuyen': 'Chưa map được tuyến',
-                    'RouteType': '-',
-                    'GioXuatBen': '-',
-                    'GioGoc': '99:99',
-                    'IsTomorrow': True,
-                    'AllHours': '-',
-                    'TrongTai': 0
+        # Match Province to upcoming trips
+        matched_report = []
+        provinces_in_backlog = prov_group['Tinh'].unique()
+
+        for tinh in provinces_in_backlog:
+            sub_df = prov_group[prov_group['Tinh'] == tinh].sort_values(by='TongKG', ascending=False)
+            tinh_orders = sub_df['SoDon'].sum()
+            tinh_kg = sub_df['TongKG'].sum()
+
+            matched_trip = None
+            hub_keywords = PROVINCE_TO_HUB_KEYWORDS.get(tinh, [tinh])
+
+            for tdata in upcoming_trips:
+                mt_lower = tdata['MaTuyen'].lower()
+                stops_lower = tdata['StopsLower']
+
+                hit = False
+                for kw in hub_keywords:
+                    kw_lower = kw.lower()
+                    if kw_lower in mt_lower:
+                        hit = True
+                        break
+                    for s in stops_lower[:3]:  # Prioritize early stops
+                        if kw_lower in s:
+                            hit = True
+                            break
+                    if hit:
+                        break
+
+                if hit:
+                    matched_trip = tdata
+                    break
+
+            if matched_trip:
+                matched_report.append({
+                    'Tinh': tinh,
+                    'MaTuyen': matched_trip['MaTuyen'],
+                    'GioXuatBen': matched_trip['HHMM'],
+                    'Origin': matched_trip['Origin'],
+                    'TrongTai': matched_trip['TrongTai'],
+                    'TongDon': tinh_orders,
+                    'TongKG': tinh_kg,
+                    'KhoGiaoList': sub_df.to_dict('records')
                 })
 
-        # Sort summary by: Departure time, then highest KG
-        summary.sort(key=lambda x: (x['IsTomorrow'], x['GioGoc'], -x['TongKG'], -x['SoDon']))
+        # Sort report: Earliest departure time, then highest KG
+        matched_report.sort(key=lambda x: (x['GioXuatBen'], -x['TongKG']))
 
         # Format Telegram Message
         lines = []
-        lines.append("🚨 <b>CẢNH BÁO ĐƠN TỒN B2B & LỊCH XE XUẤT BẾN GẦN NHẤT</b>")
-        lines.append(f"⏰ Thời điểm quét: <b>{now_str}</b>")
-        lines.append(f"📍 Kho hiện tại: <b>Kho B2B - Đài Tư - Hà Nội</b>")
-        lines.append(
-            f"📦 Tổng đơn tồn: <b>{total_orders:,} đơn</b> · <b>{total_kg:,.1f} kg</b>\n"
-            f"🚚 Cần xuất đi: <b>{transit_count:,} đơn</b> · <b>{transit_kg:,.1f} kg</b> (qua {len(grouped)} kho giao)\n"
-        )
+        lines.append("🚨 <b>CẢNH BÁO XE XUẤT BẾN TRONG 2 TIẾNG TỚI & ĐƠN TỒN THEO TỈNH</b>")
+        lines.append(f"⏰ Thời điểm quét: <b>{now_str}</b> (Quét định kỳ 1h/lần)")
+        lines.append(f"⏳ Khung giờ cảnh báo: <b>{curr_time_str} ➔ {end_time_str}</b>")
+        lines.append(f"📦 Tổng tồn Đài Tư: <b>{total_orders:,} đơn</b> · <b>{total_kg:,.1f} kg</b>")
+        lines.append(f"🚚 Hàng cần đi các tỉnh: <b>{transit_count:,} đơn</b> · <b>{transit_kg:,.1f} kg</b>\n")
 
-        lines.append("🚛 <b>DANH SÁCH TUYẾN XE GẦN NHẤT CẦN XẾP HÀNG:</b>")
-        for idx, item in enumerate(summary[:15], 1):
-            kg_info = f"{item['TongKG']:,.1f} kg" if item['TongKG'] > 0 else "0 kg"
-            lines.append(
-                f"<b>{idx}. {item['KhoGiao']}</b>\n"
-                f"   📦 Sản lượng: <b>{item['SoDon']}</b> đơn · ⚖️ <b>{kg_info}</b>\n"
-                f"   ➔ Tuyến: <code>{item['MaTuyen']}</code> [{item['RouteType']}]\n"
-                f"   ➔ ⏰ Có mặt Đài Tư: <b>{item['GioXuatBen']}</b> (Khung giờ: {item['AllHours']})"
-            )
+        if not matched_report:
+            lines.append("ℹ️ <i>Trong vòng 2 tiếng tới không có chuyến xe nào xuất bến khớp với các tỉnh đang có đơn tồn.</i>")
+        else:
+            lines.append(f"🚛 <b>CÁC TUYẾN XE XUẤT BẾN TRONG 2 TIẾNG TỚI ({len(matched_report)} TỈNH KHỚP LỊCH):</b>\n")
+            for idx, item in enumerate(matched_report, 1):
+                tt_str = f"{item['TrongTai']} kg" if item['TrongTai'] else "Xe cố định"
+                lines.append(
+                    f"📍 <b>{idx}. TỈNH {item['Tinh'].upper()}</b> ➔ Tuyến: <code>{item['MaTuyen']}</code>\n"
+                    f"   ⏰ Có mặt tại điểm đầu: <b>{item['GioXuatBen']}</b> ({item['Origin']})\n"
+                    f"   📊 <b>Tổng hàng cần xếp:</b> <b>{item['TongDon']}</b> đơn · ⚖️ <b>{item['TongKG']:,.1f} kg</b> (Xe: {tt_str})\n"
+                    f"   <b>Chi tiết kho giao:</b>"
+                )
+                for kg_info in item['KhoGiaoList'][:5]:
+                    lines.append(f"     • {kg_info['KhoGiao']}: <b>{kg_info['SoDon']}</b> đơn · <b>{kg_info['TongKG']:,.1f} kg</b>")
+                if len(item['KhoGiaoList']) > 5:
+                    rem_prov_orders = sum(k['SoDon'] for k in item['KhoGiaoList'][5:])
+                    rem_prov_kg = sum(k['TongKG'] for k in item['KhoGiaoList'][5:])
+                    lines.append(f"     <i>... và {len(item['KhoGiaoList']) - 5} kho khác ({rem_prov_orders} đơn · {rem_prov_kg:,.1f} kg).</i>")
+                lines.append("")
 
-        if len(summary) > 15:
-            rem_orders = sum(s['SoDon'] for s in summary[15:])
-            rem_kg = sum(s['TongKG'] for s in summary[15:])
-            lines.append(f"\n<i>... và còn {len(summary) - 15} kho giao khác ({rem_orders} đơn · {rem_kg:,.1f} kg).</i>")
-
-        lines.append(f"\n👉 <i>Tự động quét Metabase 1 tiếng/lần. Vui lòng ưu tiên xếp hàng lên các xe có giờ xuất bến sớm nhất!</i>")
+        lines.append("👉 <i>Ưu tiên gom và xếp hàng lên các chuyến xe có giờ xuất bến sớm nhất!</i>")
         msg = "\n".join(lines)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print(msg)
-        print("="*70 + "\n")
+        print("=" * 70 + "\n")
 
         if send_tele:
             self.send_telegram(msg)
@@ -321,14 +371,35 @@ class B2BTonAdvisor:
         if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
             print("Telegram Token/Chat ID chưa được cấu hình. Bỏ qua gửi tin.")
             return
+
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}
-        try:
-            r = requests.post(url, json=payload, timeout=12)
-            r.raise_for_status()
-            print("✅ Đã gửi cảnh báo lên Telegram Channel thành công!")
-        except Exception as e:
-            print(f"❌ Lỗi gửi Telegram: {e}")
+
+        # Split message into chunks <= 3500 chars to avoid Telegram 4096 limit
+        chunks = []
+        if len(text) <= 3500:
+            chunks = [text]
+        else:
+            current_chunk = []
+            curr_len = 0
+            for line in text.split('\n'):
+                if curr_len + len(line) + 1 > 3500:
+                    chunks.append('\n'.join(current_chunk))
+                    current_chunk = [line]
+                    curr_len = len(line)
+                else:
+                    current_chunk.append(line)
+                    curr_len += len(line) + 1
+            if current_chunk:
+                chunks.append('\n'.join(current_chunk))
+
+        for idx, chunk in enumerate(chunks, 1):
+            payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk, "parse_mode": "HTML"}
+            try:
+                r = requests.post(url, json=payload, timeout=15)
+                r.raise_for_status()
+                print(f"✅ Đã gửi phần {idx}/{len(chunks)} lên Telegram Channel thành công!")
+            except Exception as e:
+                print(f"❌ Lỗi gửi Telegram phần {idx}: {e}")
 
     def run_daemon(self, interval_seconds=3600):
         print(f"🚀 Bắt đầu chạy ngầm tự động mỗi {interval_seconds // 60} phút...")
