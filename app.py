@@ -76,34 +76,40 @@ if not require_login():
     st.stop()
 
 # ==================== LOAD DATA ====================
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def load_data():
-    url = st.secrets.get("SHEET_URL", "")
     df = pd.DataFrame()
     source_used = ""
-    try:
-        if url:
-            df = pd.read_csv(url)
-            source_used = "Google Sheets"
-    except Exception:
-        pass
-        
-    if df.empty:
-        local_file = 'Data B2B Master.xlsx'
-        if os.path.exists(local_file):
-            try:
-                df = pd.read_excel(local_file)
-                if len(df.columns) > 0 and str(df.columns[0]).startswith('Unnamed:'):
-                    for i in range(min(5, len(df))):
-                        if 'NgayNhap' in df.iloc[i].values:
-                            df.columns = df.iloc[i]
-                            df = df[i+1:].reset_index(drop=True)
-                            break
+    
+    # ✅ ƯU TIÊN 1: Đọc từ file Excel local (được tự động cập nhật hàng ngày bởi GitHub Actions)
+    local_file = 'Data B2B Master.xlsx'
+    if os.path.exists(local_file):
+        try:
+            df_local = pd.read_excel(local_file)
+            if len(df_local.columns) > 0 and str(df_local.columns[0]).startswith('Unnamed:'):
+                for i in range(min(5, len(df_local))):
+                    if 'NgayNhap' in df_local.iloc[i].values:
+                        df_local.columns = df_local.iloc[i]
+                        df_local = df_local[i+1:].reset_index(drop=True)
+                        break
+            if not df_local.empty:
+                df = df_local
                 source_used = local_file
-            except Exception as e:
-                return pd.DataFrame(), f"Error reading {local_file}: {str(e)}"
-        else:
-            return pd.DataFrame(), "Không tìm thấy dữ liệu"
+        except Exception:
+            pass
+
+    # ✅ ƯU TIÊN 2 (dự phòng): Đọc từ Google Sheets URL nếu Excel không tồn tại
+    if df.empty:
+        url = st.secrets.get("SHEET_URL", "")
+        try:
+            if url:
+                df = pd.read_csv(url)
+                source_used = "Google Sheets"
+        except Exception:
+            pass
+
+    if df.empty:
+        return pd.DataFrame(), "Không tìm thấy dữ liệu"
             
     if not df.empty:
         if 'MaDonGoc' in df.columns:
