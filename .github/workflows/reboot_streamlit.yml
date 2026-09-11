@@ -1,0 +1,31 @@
+name: Reboot Streamlit App
+
+on:
+  workflow_dispatch:  # Chạy thủ công từ GitHub Actions
+  push:
+    branches: [main]
+    paths:
+      - 'app.py'
+      - 'requirements.txt'
+
+jobs:
+  reboot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reboot Streamlit App via API
+        env:
+          STREAMLIT_API_TOKEN: ${{ secrets.STREAMLIT_API_TOKEN }}
+          STREAMLIT_APP_ID: ${{ secrets.STREAMLIT_APP_ID }}
+        run: |
+          if [ -n "$STREAMLIT_API_TOKEN" ] && [ -n "$STREAMLIT_APP_ID" ]; then
+            echo "Calling Streamlit API to reboot app..."
+            curl -X POST \
+              "https://api.streamlit.io/v1/apps/$STREAMLIT_APP_ID/reboot" \
+              -H "Authorization: Bearer $STREAMLIT_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              --silent --show-error
+            echo "Reboot request sent."
+          else
+            echo "STREAMLIT_API_TOKEN or STREAMLIT_APP_ID not set. Skipping reboot."
+            echo "Please add these secrets in GitHub Settings > Secrets > Actions"
+          fi
