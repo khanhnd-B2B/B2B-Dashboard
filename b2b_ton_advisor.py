@@ -156,8 +156,13 @@ class B2BTonAdvisor:
         self.chat_id = os.environ.get('TELEGRAM_CHAT_ID', cfg['telegram_chat_id'])
         self.thread_id = int(os.environ.get('TELEGRAM_MESSAGE_THREAD_ID', cfg.get('telegram_message_thread_id', 7090)))
         self.gg_sheet_url = os.environ.get('GG_SHEET_URL', cfg.get('gg_sheet_url', ''))
+        m = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', self.gg_sheet_url)
+        self.spreadsheet_id = m.group(1) if m else '1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU'
 
     def save_config(self):
+        m = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', self.gg_sheet_url)
+        if m:
+            self.spreadsheet_id = m.group(1)
         cfg = {
             'metabase_url': self.metabase_url,
             'metabase_session': self.session_token,
@@ -261,7 +266,120 @@ class B2BTonAdvisor:
                     'ProvincesServed': provinces_served
                 })
 
-        return trips_list
+    def sync_to_google_sheet(self, df_transit, upcoming_trips, now_str):
+        token_path = os.path.join(os.path.dirname(__file__), 'token.json')
+        if not os.path.exists(token_path):
+            print("⚠️ Không tìm thấy token.json để đồng bộ Google Sheet.")
+            return self.gg_sheet_url
+
+        try:
+            from google.oauth2.credentials import Credentials
+            from google.auth.transport.requests import Request
+            from googleapiclient.discovery import build
+
+            SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+            if creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+                with open(token_path, 'w') as token:
+                    token.write(creds.to_json())
+
+            service = build('sheets', 'v4', credentials=creds)
+            spreadsheet_id = self.spreadsheet_id
+            tab_name = 'Ton_Metabase_Live'
+
+            # Build province to trip lookup
+            prov_to_trips = defaultdict(list)
+            for t in upcoming_trips:
+                for prov in t.get('ProvincesServed', []):
+                    prov_to_trips[prov].append(t)
+
+            export_rows = []
+            for _, r in df_transit.iterrows():
+                prov = r.get('Tinh', '')
+                matched_t = prov_to_trips.get(prov, [])
+                if matched_t:
+                    primary_t = matched_t[0]
+                    tuyen = primary_t['MaTuyen']
+                    gio = primary_t['HHMM']
+                    diem = primary_t['Origin']
+                    tai = primary_t.get('TrongTai', '')
+                    status = 'Sắp chạy (1h30p)'
+                else:
+                    tuyen = 'Chưa có chuyến trong 1h30p'
+                    gio = '---'
+                    diem = '---'
+                    tai = '---'
+                    status = 'Chờ chuyến sau'
+
+                export_rows.append({
+                    'Mã Đơn Gốc': str(r.get('MaDonGoc', '')),
+                    'Mã Kiện': str(r.get('MaKien', '')),
+                    'Khách Hàng': str(r.get('ClientName', '')),
+                    'Trạng Thái': str(r.get('TrangThai', '')),
+                    'Kho Lấy': str(r.get('KhoLay', '')),
+                    'Kho Hiện Tại': str(r.get('KhoHienTai', '')),
+                    'Kho Giao': str(r.get('KhoGiao', '')),
+                    'Tỉnh Nhận': prov,
+                    'KL Tính Cước (KG)': r.get('KG', 0.0),
+                    'Cân Nặng Thực Tế (KG)': r.get('CanNangThucTe_Kg', ''),
+                    'KL Quy Đổi (KG)': r.get('CanNangQuyDoi_Kg', ''),
+                    'Tuyến Xe Dự Kiến': tuyen,
+                    'Giờ Xuất Bến': gio,
+                    'Điểm Xuất Phát': diem,
+                    'Tải Xe (KG)': tai,
+                    'Trạng Thái Tuyến': status,
+                    'Thời Gian Quét': now_str
+                })
+
+            df_export = pd.DataFrame(export_rows)
+
+            # Ensure Tab exists
+            meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheet_id = None
+            for s in meta.get('sheets', []):
+                if s['properties']['title'] == tab_name:
+                    sheet_id = s['properties']['sheetId']
+                    break
+
+            if sheet_id is None:
+                add_req = {
+                    'requests': [{
+                        'addSheet': {
+                            'properties': {
+                                'title': tab_name,
+                                'gridProperties': {'rowCount': max(len(df_export) + 100, 500), 'columnCount': 20}
+                            }
+                        }
+                    }]
+                }
+                res_add = service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=add_req).execute()
+                sheet_id = res_add['replies'][0]['addSheet']['properties']['sheetId']
+
+            # Clear old content
+            service.spreadsheets().values().clear(
+                spreadsheetId=spreadsheet_id,
+                range=f"{tab_name}!A:Q"
+            ).execute()
+
+            # Upload new rows
+            header = df_export.columns.tolist()
+            data_values = [header] + df_export.fillna('').astype(str).values.tolist()
+
+            service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=f"{tab_name}!A1",
+                valueInputOption='USER_ENTERED',
+                body={'values': data_values}
+            ).execute()
+
+            direct_link = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit#gid={sheet_id}"
+            print(f"✅ Đã đồng bộ {len(df_export)} dòng lên Google Sheet: {direct_link}")
+            return direct_link
+
+        except Exception as e:
+            print(f"⚠️ Chưa thể ghi vào Google Sheet ({e}). Vui lòng chạy auth_google_write.bat để cấp quyền ghi.")
+            return self.gg_sheet_url
 
     def process_and_report(self, target_chat_id=None, target_thread_id=None, send_tele=True):
         now = datetime.now()
@@ -381,9 +499,17 @@ class B2BTonAdvisor:
                     lines.append(f"   • <b>Tỉnh {prov_name}:</b> {pdata['SoDon']} đơn - {pdata['TongKG']:,.1f} kg")
                 lines.append("")
 
+        # Auto-sync detail backlog to Google Sheet
+        try:
+            sheet_url = self.sync_to_google_sheet(df_transit, upcoming_trips, now_str)
+            if sheet_url:
+                self.gg_sheet_url = sheet_url
+        except Exception as e:
+            print(f"⚠️ Lỗi sync Google Sheet: {e}")
+
         # Add Google Sheet detail link
         if self.gg_sheet_url:
-            lines.append(f"📊 <b>Dữ liệu chi tiết đơn tồn (Google Sheet):</b>\n👉 <a href=\"{self.gg_sheet_url}\">Bấm vào đây để xem chi tiết</a>\n")
+            lines.append(f"📊 <b>Dữ liệu chi tiết {transit_count:,} đơn tồn (Google Sheet):</b>\n👉 <a href=\"{self.gg_sheet_url}\">Bấm vào đây để xem chi tiết từng đơn</a>\n")
 
         lines.append("👉 <i>Vui lòng ưu tiên gom và xếp hàng lên các chuyến xe có giờ xuất bến sớm nhất!</i>")
         msg = "\n".join(lines)
