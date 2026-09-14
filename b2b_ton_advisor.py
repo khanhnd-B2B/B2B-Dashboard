@@ -15,6 +15,8 @@ CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'advisor_config.json')
 DEFAULT_CONFIG = {
     'metabase_url': 'https://data-bi.ghn.vn',
     'metabase_session': '911df869-0b66-4af3-a701-a10a563c33ad',
+    'metabase_username': '',
+    'metabase_password': '',
     'metabase_card_id': 6287,
     'telegram_bot_token': '8370307476:AAEsPB2UZ0zQHMTEWPGFFBw7fUYuWsePxPM',
     'telegram_chat_id': '-1004492922071',
@@ -149,11 +151,13 @@ class B2BTonAdvisor:
                 print(f"Lỗi đọc file cấu hình {CONFIG_FILE}: {e}")
 
         # Allow environment overrides
-        self.metabase_url = os.environ.get('METABASE_URL', cfg['metabase_url'])
-        self.session_token = os.environ.get('METABASE_SESSION', cfg['metabase_session'])
-        self.card_id = int(os.environ.get('METABASE_CARD_ID', cfg['metabase_card_id']))
-        self.bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', cfg['telegram_bot_token'])
-        self.chat_id = os.environ.get('TELEGRAM_CHAT_ID', cfg['telegram_chat_id'])
+        self.metabase_url = os.environ.get('METABASE_URL', cfg.get('metabase_url', 'https://data-bi.ghn.vn'))
+        self.session_token = os.environ.get('METABASE_SESSION', cfg.get('metabase_session', ''))
+        self.metabase_username = os.environ.get('METABASE_USERNAME', cfg.get('metabase_username', ''))
+        self.metabase_password = os.environ.get('METABASE_PASSWORD', cfg.get('metabase_password', ''))
+        self.card_id = int(os.environ.get('METABASE_CARD_ID', cfg.get('metabase_card_id', 6287)))
+        self.bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', cfg.get('telegram_bot_token', ''))
+        self.chat_id = os.environ.get('TELEGRAM_CHAT_ID', cfg.get('telegram_chat_id', ''))
         self.thread_id = int(os.environ.get('TELEGRAM_MESSAGE_THREAD_ID', cfg.get('telegram_message_thread_id', 7090)))
         self.gg_sheet_url = os.environ.get('GG_SHEET_URL', cfg.get('gg_sheet_url', ''))
         m = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', self.gg_sheet_url)
@@ -166,6 +170,8 @@ class B2BTonAdvisor:
         cfg = {
             'metabase_url': self.metabase_url,
             'metabase_session': self.session_token,
+            'metabase_username': self.metabase_username,
+            'metabase_password': self.metabase_password,
             'metabase_card_id': self.card_id,
             'telegram_bot_token': self.bot_token,
             'telegram_chat_id': self.chat_id,
@@ -194,14 +200,69 @@ class B2BTonAdvisor:
         valid_stop1 = stop1[stop1['TenDiem'].isin(VALID_ORIGINS)].copy()
         self.b2b_stop1 = valid_stop1[~valid_stop1['MaTuyen'].str.upper().str.startswith('HY_')].copy()
 
+    def login_metabase(self, username=None, password=None):
+        """Tự động đăng nhập Metabase bằng tài khoản username/password để lấy session token mới."""
+        uname = (username or self.metabase_username or '').strip()
+        pword = (password or self.metabase_password or '').strip()
+        if not uname or not pword:
+            print("⚠️ Chưa có thông tin tài khoản Metabase (username/password) để tự động đăng nhập.")
+            return False, "Chưa cấu hình tài khoản hoặc mật khẩu Metabase"
+
+        login_url = f'{self.metabase_url}/api/session'
+        try:
+            print(f"🔄 Đang tự động gửi yêu cầu đăng nhập tới Metabase ({uname})...")
+            res = requests.post(login_url, json={'username': uname, 'password': pword}, timeout=25)
+            if res.status_code == 200:
+                data = res.json()
+                new_session = data.get('id')
+                if new_session:
+                    self.session_token = new_session
+                    self.metabase_username = uname
+                    self.metabase_password = pword
+                    self.save_config()
+                    print(f"✅ Đăng nhập Metabase thành công! Session ID mới: {new_session[:8]}***")
+                    return True, new_session
+
+            err_msg = "Sai tài khoản hoặc mật khẩu"
+            try:
+                err_data = res.json()
+                if 'errors' in err_data:
+                    err_msg = ", ".join([f"{k}: {v}" for k, v in err_data['errors'].items()])
+                elif 'message' in err_data:
+                    err_msg = err_data['message']
+            except Exception:
+                err_msg = res.text[:200]
+            print(f"❌ Đăng nhập Metabase thất bại ({res.status_code}): {err_msg}")
+            return False, f"HTTP {res.status_code}: {err_msg}"
+        except Exception as e:
+            print(f"❌ Lỗi kết nối đăng nhập Metabase: {e}")
+            return False, f"Lỗi kết nối: {str(e)}"
+
     def fetch_live_metabase(self):
         url = f'{self.metabase_url}/api/card/{self.card_id}/query/json'
+        
+        # Nếu chưa có session token nhưng có tài khoản mật khẩu, thử đăng nhập trước
+        if not self.session_token and self.metabase_username and self.metabase_password:
+            self.login_metabase()
+
         headers = {
-            'X-Metabase-Session': self.session_token,
-            'Cookie': f'metabase.SESSION={self.session_token}',
+            'X-Metabase-Session': self.session_token or '',
+            'Cookie': f'metabase.SESSION={self.session_token or ""}',
             'Content-Type': 'application/json'
         }
         res = requests.post(url, headers=headers, json={}, timeout=40)
+        
+        # Nếu session hết hạn (401), tự động đăng nhập lại bằng username/password nếu có
+        if res.status_code == 401 and self.metabase_username and self.metabase_password:
+            print("⚠️ Session Metabase đã hết hạn (401). Đang tự động đăng nhập lại để cấp token mới...")
+            ok, msg = self.login_metabase()
+            if ok:
+                headers['X-Metabase-Session'] = self.session_token
+                headers['Cookie'] = f'metabase.SESSION={self.session_token}'
+                res = requests.post(url, headers=headers, json={}, timeout=40)
+            else:
+                raise Exception(f"Session Metabase hết hạn và tự động đăng nhập thất bại: {msg}")
+
         res.raise_for_status()
         return pd.DataFrame(res.json())
 
@@ -399,8 +460,10 @@ class B2BTonAdvisor:
             err_msg = (
                 f"⚠️ <b>LỖI KẾT NỐI METABASE (Card {self.card_id}):</b>\n"
                 f"Chi tiết: <code>{str(e)}</code>\n\n"
-                f"🔑 <b>Phiên đăng nhập (Session) có thể đã hết hạn!</b>\n"
-                f"👉 <i>Vui lòng cập nhật token mới bằng lệnh:</i>\n"
+                f"🔑 <b>Phiên đăng nhập (Session) có thể đã hết hạn!</b>\n\n"
+                f"👉 <b>Cách 1: Tự động đăng nhập vĩnh viễn (Khuyên dùng):</b>\n"
+                f"Gửi tin nhắn riêng cho Bot: <code>/login &lt;email&gt; &lt;mật_khẩu&gt;</code>\n\n"
+                f"👉 <b>Cách 2: Cập nhật token thủ công:</b>\n"
                 f"<code>/token &lt;session_token_mới&gt;</code>"
             )
             print(err_msg)
@@ -573,7 +636,8 @@ class B2BTonAdvisor:
         commands = [
             {'command': 'ton', 'description': 'Lấy cảnh báo hàng tồn & lịch tải tuyến 1h30p tới'},
             {'command': 'check', 'description': 'Kiểm tra lịch xe xuất bến gần nhất'},
-            {'command': 'token', 'description': 'Cập nhật session token Metabase (/token <session_id>)'},
+            {'command': 'login', 'description': 'Đăng nhập Metabase tự động vĩnh viễn (/login <email> <mk>)'},
+            {'command': 'token', 'description': 'Cập nhật session token Metabase thủ công (/token <id>)'},
             {'command': 'sheet', 'description': 'Cập nhật link Google Sheet (/sheet <link>)'},
             {'command': 'help', 'description': 'Hướng dẫn sử dụng bot'}
         ]
@@ -616,6 +680,7 @@ class B2BTonAdvisor:
                 f"👋 Chào <b>{sender_name}</b>! Tôi là Bot Cảnh Báo Tồn B2B & Lịch Xe GHN.\n\n"
                 f"🛠 <b>CÁC LỆNH HỖ TRỢ:</b>\n"
                 f"• Gõ <code>/ton</code> hoặc <code>/check</code>: Quét tồn Metabase và báo cáo lịch tải tuyến 1h30p tới.\n"
+                f"• Gõ <code>/login &lt;email&gt; &lt;mật_khẩu&gt;</code>: <b>Tự động đăng nhập Metabase</b> — Bot sẽ tự động lấy và gia hạn token mới vĩnh viễn, không bao giờ lo hết hạn token! <i>(Nên chat riêng với Bot để bảo mật mật khẩu)</i>.\n"
                 f"• Gõ <code>/token &lt;session_token&gt;</code>: Cập nhật mã Cookie <code>metabase.SESSION</code> mới khi phiên hết hạn.\n"
                 f"• Gõ <code>/sheet &lt;link_ggsheet&gt;</code>: Cập nhật đường link Google Sheet chi tiết.\n"
                 f"• Bạn cũng có thể tag <code>@CanhBaoHangVeGXT_Bot</code> hoặc gõ tin nhắn chứa từ khóa 'báo tồn', 'check tồn' trong topic.\n\n"
@@ -624,7 +689,56 @@ class B2BTonAdvisor:
             self.send_telegram(help_msg, chat_id=chat_id, thread_id=thread_id)
             return
 
-        # 2. Update Metabase Session Token: /token <new_token>
+        # 2. Metabase Auto-login: /login <username> <password>
+        if text.startswith('/login'):
+            parts = text.split(maxsplit=2)
+            if len(parts) < 3 or not parts[1].strip() or not parts[2].strip():
+                usage_msg = (
+                    "⚠️ <b>Cú pháp lệnh đăng nhập chưa đúng!</b>\n"
+                    "Vui lòng gửi theo cú pháp: <code>/login &lt;email_metabase&gt; &lt;mật_khẩu&gt;</code>\n\n"
+                    "<i>Ví dụ:</i>\n"
+                    "<code>/login khanhnd@ghn.vn MatKhauCuaBan123</code>\n\n"
+                    "🔒 <b>Lưu ý bảo mật:</b> Bạn nên gửi lệnh này trong <b>tin nhắn riêng trực tiếp với Bot (@CanhBaoHangVeGXT_Bot)</b> thay vì trong nhóm chat để bảo mật mật khẩu!"
+                )
+                self.send_telegram(usage_msg, chat_id=chat_id, thread_id=thread_id)
+                return
+
+            uname = parts[1].strip()
+            pword = parts[2].strip()
+
+            # Attempt auto-login
+            ok, res_msg = self.login_metabase(username=uname, password=pword)
+
+            # Try deleting user's message to avoid leaving password visible in chat
+            try:
+                msg_id = message.get('message_id')
+                if msg_id:
+                    requests.post(f"https://api.telegram.org/bot{self.bot_token}/deleteMessage", json={'chat_id': chat_id, 'message_id': msg_id}, timeout=5)
+            except Exception:
+                pass
+
+            if ok:
+                success_msg = (
+                    f"🎉 <b>ĐĂNG NHẬP METABASE THÀNH CÔNG!</b>\n\n"
+                    f"👤 Tài khoản: <code>{uname}</code>\n"
+                    f"🔑 Session ID cấp mới: <code>{self.session_token[:8]}***</code>\n\n"
+                    f"✅ <b>Từ bây giờ Bot sẽ tự động gia hạn token vĩnh viễn!</b>\n"
+                    f"Mỗi khi phiên làm việc hết hạn, bot sẽ tự động đăng nhập lại để cấp token mới trong 1 giây mà bạn không cần phải copy cookie thủ công nữa.\n\n"
+                    f"👉 Bây giờ bạn có thể gõ <code>/ton</code> để lấy báo cáo ngay!"
+                )
+                self.send_telegram(success_msg, chat_id=chat_id, thread_id=thread_id)
+            else:
+                fail_msg = (
+                    f"❌ <b>Đăng nhập Metabase thất bại!</b>\n\n"
+                    f"👤 Tài khoản: <code>{uname}</code>\n"
+                    f"⚠️ Chi tiết lỗi từ Metabase: <code>{res_msg}</code>\n\n"
+                    f"👉 Vui lòng kiểm tra lại email hoặc mật khẩu tài khoản Metabase của bạn.\n"
+                    f"💡 <i>Nếu tài khoản của bạn chỉ đăng nhập qua nút Google SSO:</i> Bạn hãy truy cập vào <a href=\"https://data-bi.ghn.vn/auth/forgot_password\">https://data-bi.ghn.vn/auth/forgot_password</a> để tạo mật khẩu riêng cho email GHN của bạn."
+                )
+                self.send_telegram(fail_msg, chat_id=chat_id, thread_id=thread_id)
+            return
+
+        # 3. Update Metabase Session Token: /token <new_token>
         if text.startswith('/token'):
             parts = text.split(maxsplit=1)
             if len(parts) < 2 or not parts[1].strip():
