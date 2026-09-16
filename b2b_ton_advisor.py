@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
     'telegram_bot_token': '8370307476:AAEsPB2UZ0zQHMTEWPGFFBw7fUYuWsePxPM',
     'telegram_chat_id': '-1004492922071',
     'telegram_message_thread_id': 7090,
-    'gg_sheet_url': 'https://docs.google.com/spreadsheets/d/1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU/edit'
+    'gg_sheet_url': 'https://docs.google.com/spreadsheets/d/1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU/edit?gid=654306746#gid=654306746'
 }
 
 TRUCK_FILE = os.path.join(os.path.dirname(__file__), 'data chuyến Truck 7 ngày 11.09.xlsx')
@@ -266,6 +266,49 @@ class B2BTonAdvisor:
         res.raise_for_status()
         return pd.DataFrame(res.json())
 
+    def fetch_live_sheet_backlog(self):
+        """Đọc trực tiếp dữ liệu đơn tồn từ Google Sheet tab TonUpdate1h."""
+        token_path = os.path.join(os.path.dirname(__file__), 'token.json')
+        if not os.path.exists(token_path):
+            raise Exception("Không tìm thấy file token.json để truy cập Google Sheet")
+
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
+
+        SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            with open(token_path, 'w') as token:
+                token.write(creds.to_json())
+
+        service = build('sheets', 'v4', credentials=creds)
+        tab_name = 'TonUpdate1h'
+        res = service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range=f'{tab_name}!A1:Z').execute()
+        values = res.get('values', [])
+        if not values or len(values) < 2:
+            raise Exception(f"Sheet tab '{tab_name}' trống hoặc không có dữ liệu.")
+
+        headers = values[0]
+        df = pd.DataFrame(values[1:], columns=headers)
+        return df
+
+    def fetch_live_data(self):
+        """Ưu tiên đọc dữ liệu tồn từ Google Sheet tab TonUpdate1h, fallback sang Metabase nếu cần."""
+        try:
+            print("📊 Đang đọc dữ liệu tồn từ Google Sheet tab TonUpdate1h...")
+            df = self.fetch_live_sheet_backlog()
+            print(f"✅ Đã nạp thành công {len(df)} dòng dữ liệu từ Google Sheet tab TonUpdate1h!")
+            return df, "Google Sheet (TonUpdate1h)"
+        except Exception as e_sheet:
+            print(f"⚠️ Không đọc được từ Google Sheet ({e_sheet}). Đang thử kết nối Metabase...")
+            try:
+                df = self.fetch_live_metabase()
+                return df, f"Metabase (Card {self.card_id})"
+            except Exception as e_meta:
+                raise Exception(f"Không thể lấy dữ liệu tồn từ cả Google Sheet ({e_sheet}) và Metabase ({e_meta})")
+
     def get_upcoming_trips_in_90min(self, current_time):
         if self.df_truck is None:
             return []
@@ -454,39 +497,43 @@ class B2BTonAdvisor:
         chat_dst = target_chat_id or self.chat_id
         thread_dst = target_thread_id if target_thread_id is not None else self.thread_id
 
-        print(f"[{now_str}] Đang quét đơn tồn Metabase & Lịch xe trong vòng 1h30p ({curr_time_str} ➔ {end_time_str})...")
+        print(f"[{now_str}] Đang quét đơn tồn ({curr_time_str} ➔ {end_time_str})...")
 
         try:
-            df = self.fetch_live_metabase()
+            df, source_desc = self.fetch_live_data()
         except Exception as e:
             err_msg = (
-                f"⚠️ <b>LỖI KẾT NỐI METABASE (Card {self.card_id}):</b>\n"
+                f"⚠️ <b>LỖI KẾT NỐI DỮ LIỆU TỒN:</b>\n"
                 f"Chi tiết: <code>{str(e)}</code>\n\n"
-                f"🔑 <b>Phiên đăng nhập (Session) có thể đã hết hạn!</b>\n\n"
-                f"👉 <b>Cách 1: Tự động đăng nhập vĩnh viễn (Khuyên dùng):</b>\n"
-                f"Gửi tin nhắn riêng cho Bot: <code>/login &lt;email&gt; &lt;mật_khẩu&gt;</code>\n\n"
-                f"👉 <b>Cách 2: Cập nhật token thủ công:</b>\n"
-                f"<code>/token &lt;session_token_mới&gt;</code>"
+                f"👉 <i>Vui lòng kiểm tra lại kết nối mạng hoặc file cấu hình!</i>"
             )
             print(err_msg)
             if send_tele:
                 self.send_telegram(err_msg, chat_id=chat_dst, thread_id=thread_dst)
             return None
 
-        total_orders = len(df)
-
-        # Extract KG column
+        # Extract KG column (support both comma and dot decimal separators)
         for col in ['KL_TinhCuoc_Kg', 'CanNangThucTe_Kg', 'CanNangQuyDoi_Kg']:
             if col in df.columns:
-                df['KG'] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                df['KG'] = pd.to_numeric(df[col].astype(str).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
                 break
         if 'KG' not in df.columns:
             df['KG'] = 0.0
 
-        total_kg = df['KG'].sum()
-
         # Filter transit orders where KhoHienTai is strictly Dai Tu
-        df_transit = df[(df['KhoGiao'] != df['KhoHienTai']) & (df['KhoHienTai'].str.contains('Đài Tư|Dai Tu', case=False, na=False))].copy()
+        if 'KhoHienTai' in df.columns:
+            df_daitu = df[df['KhoHienTai'].str.contains('Đài Tư|Dai Tu', case=False, na=False)].copy()
+        else:
+            df_daitu = df.copy()
+
+        total_orders = len(df_daitu)
+        total_kg = df_daitu['KG'].sum()
+
+        if 'KhoGiao' in df_daitu.columns and 'KhoHienTai' in df_daitu.columns:
+            df_transit = df_daitu[df_daitu['KhoGiao'] != df_daitu['KhoHienTai']].copy()
+        else:
+            df_transit = df_daitu.copy()
+
         transit_count = len(df_transit)
         transit_kg = df_transit['KG'].sum()
 
@@ -564,17 +611,9 @@ class B2BTonAdvisor:
                     lines.append(f"   • <b>Tỉnh {prov_name}:</b> {pdata['SoDon']} đơn - {pdata['TongKG']:,.1f} kg")
                 lines.append("")
 
-        # Auto-sync detail backlog to Google Sheet
-        try:
-            sheet_url = self.sync_to_google_sheet(df_transit, upcoming_trips, now_str)
-            if sheet_url:
-                self.gg_sheet_url = sheet_url
-        except Exception as e:
-            print(f"⚠️ Lỗi sync Google Sheet: {e}")
-
         # Add Google Sheet detail link
-        if self.gg_sheet_url:
-            lines.append(f"📊 <b>Dữ liệu chi tiết {transit_count:,} đơn tồn (Google Sheet):</b>\n👉 <a href=\"{self.gg_sheet_url}\">Bấm vào đây để xem chi tiết từng đơn</a>\n")
+        sheet_link = self.gg_sheet_url or "https://docs.google.com/spreadsheets/d/1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU/edit?gid=654306746#gid=654306746"
+        lines.append(f"📊 <b>Dữ liệu chi tiết {transit_count:,} đơn tồn (Google Sheet Tab TonUpdate1h):</b>\n👉 <a href=\"{sheet_link}\">Bấm vào đây để xem chi tiết từng đơn</a>\n")
 
         lines.append("👉 <i>Vui lòng ưu tiên gom và xếp hàng lên các chuyến xe có giờ xuất bến sớm nhất!</i>")
         msg = "\n".join(lines)
