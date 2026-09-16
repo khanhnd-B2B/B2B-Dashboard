@@ -1,8 +1,12 @@
 ~$*
 *.xlsx
+!data chuyến Truck 7 ngày 11.09.xlsx
 __pycache__/
 b2b_network.db
 
 .env
+token.json
+credentials.json
 .streamlit/secrets.toml
 secrets.toml
+

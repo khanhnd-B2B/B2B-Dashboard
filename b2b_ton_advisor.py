@@ -135,6 +135,28 @@ ORIGIN_EXCLUDED_STOPS = {
     'kho trung chuyển hà nội 02'
 }
 
+def start_health_server(port=8080):
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(b"<h1>B2B Ton Advisor Bot is Running Online 24/7!</h1><p>Status: OK</p>")
+
+        def log_message(self, format, *args):
+            pass
+
+    try:
+        server = HTTPServer(('0.0.0.0', port), HealthHandler)
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        print(f"🌐 Đã khởi chạy Health Server trên port {port} (hỗ trợ Render/Railway 24/7)")
+    except Exception as e:
+        print(f"Không thể mở Health Server trên port {port}: {e}")
+
 class B2BTonAdvisor:
     def __init__(self):
         self.load_config()
@@ -863,28 +885,6 @@ class B2BTonAdvisor:
 
         if is_command or is_mention or (is_private and is_keyword) or (thread_id == self.thread_id and is_keyword):
             self.process_and_report(target_chat_id=chat_id, target_thread_id=thread_id, send_tele=True)
-
-def start_health_server(port=8080):
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-    import threading
-
-    class HealthHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(b"<h1>B2B Ton Advisor Bot is Running Online 24/7!</h1><p>Status: OK</p>")
-
-        def log_message(self, format, *args):
-            pass
-
-    try:
-        server = HTTPServer(('0.0.0.0', port), HealthHandler)
-        t = threading.Thread(target=server.serve_forever, daemon=True)
-        t.start()
-        print(f"🌐 Đã khởi chạy Health Server trên port {port} (hỗ trợ Render/Railway 24/7)")
-    except Exception as e:
-        print(f"Không thể mở Health Server trên port {port}: {e}")
 
     def run_listener(self):
         port = os.environ.get('PORT')
