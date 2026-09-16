@@ -357,15 +357,15 @@ class B2BTonAdvisor:
             except Exception as e_meta:
                 raise Exception(f"Không thể lấy dữ liệu tồn từ cả Google Sheet ({e_sheet}) và Metabase ({e_meta})")
 
-    def get_upcoming_trips_in_90min(self, current_time):
+    def get_upcoming_trips(self, current_time, window_hours=4):
         if self.df_truck is None:
             return []
 
         curr_time_str = current_time.strftime('%H:%M')
-        window_end = current_time + timedelta(minutes=90) # 1h 30p window
+        window_end = current_time + timedelta(hours=window_hours) # Khung 4h
         end_time_str = window_end.strftime('%H:%M')
 
-        # Filter stop 1 in the 1h30m window
+        # Filter stop 1 in the window
         if end_time_str < curr_time_str:  # crosses midnight
             upcoming_stop1 = self.b2b_stop1[(self.b2b_stop1['HHMM'] >= curr_time_str) | (self.b2b_stop1['HHMM'] <= end_time_str)]
         else:
@@ -420,6 +420,9 @@ class B2BTonAdvisor:
 
         return trips_list
 
+    # Alias để tương thích ngược
+    get_upcoming_trips_in_90min = get_upcoming_trips
+
     def sync_to_google_sheet(self, df_transit, upcoming_trips, now_str):
         token_path = os.path.join(os.path.dirname(__file__), 'token.json')
         if not os.path.exists(token_path):
@@ -458,9 +461,9 @@ class B2BTonAdvisor:
                     gio = primary_t['HHMM']
                     diem = primary_t['Origin']
                     tai = primary_t.get('TrongTai', '')
-                    status = 'Sắp chạy (1h30p)'
+                    status = 'Sắp chạy (4h)'
                 else:
-                    tuyen = 'Chưa có chuyến trong 1h30p'
+                    tuyen = 'Chưa có chuyến trong 4h'
                     gio = '---'
                     diem = '---'
                     tai = '---'
@@ -535,17 +538,17 @@ class B2BTonAdvisor:
             print(f"⚠️ Chưa thể ghi vào Google Sheet ({e}). Vui lòng chạy auth_google_write.bat để cấp quyền ghi.")
             return self.gg_sheet_url
 
-    def process_and_report(self, target_chat_id=None, target_thread_id=None, send_tele=True):
+    def process_and_report(self, target_chat_id=None, target_thread_id=None, send_tele=True, window_hours=4):
         now = get_vietnam_now()
         now_str = now.strftime('%H:%M %d/%m/%Y')
         curr_time_str = now.strftime('%H:%M')
-        window_end = now + timedelta(minutes=90)
+        window_end = now + timedelta(hours=window_hours)
         end_time_str = window_end.strftime('%H:%M')
 
         chat_dst = target_chat_id or self.chat_id
         thread_dst = target_thread_id if target_thread_id is not None else self.thread_id
 
-        print(f"[{now_str}] Đang quét đơn tồn ({curr_time_str} ➔ {end_time_str})...")
+        print(f"[{now_str}] Đang quét đơn tồn ({curr_time_str} ➔ {end_time_str}, khung {window_hours}h)...")
 
         try:
             df, source_desc = self.fetch_live_data()
@@ -588,14 +591,14 @@ class B2BTonAdvisor:
         # Extract Province for each order
         df_transit['Tinh'] = df_transit['KhoGiao'].apply(extract_province)
 
-        # Get trips departing in the next 1 hour 30 minutes
-        upcoming_trips = self.get_upcoming_trips_in_90min(now)
-        print(f"Tìm thấy {len(upcoming_trips)} chuyến xe xuất bến trong khung giờ {curr_time_str} - {end_time_str}.")
+        # Get trips departing in the next window_hours (mặc định 4 giờ tới)
+        upcoming_trips = self.get_upcoming_trips(now, window_hours=window_hours)
+        print(f"Tìm thấy {len(upcoming_trips)} chuyến xe xuất bến trong khung giờ {curr_time_str} - {end_time_str} ({window_hours} giờ tới).")
 
         def get_mins_diff(hhmm, current_dt):
             h, m = map(int, hhmm.split(':'))
             target = current_dt.replace(hour=h, minute=m, second=0, microsecond=0)
-            if (target - current_dt).total_seconds() < -1800:
+            if target < current_dt:
                 target += timedelta(days=1)
             return (target - current_dt).total_seconds() / 60
 
@@ -659,14 +662,14 @@ class B2BTonAdvisor:
 
         # Format Telegram Message as requested
         lines = []
-        lines.append("🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN (1H30P TỚI)</b>")
+        lines.append(f"🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN ({window_hours} GIỜ TỚI)</b>")
         lines.append(f"⏰ Thời điểm quét: <b>{now_str}</b>")
         lines.append(f"⏳ Khung giờ xuất bến: <b>{curr_time_str} ➔ {end_time_str}</b>")
         lines.append(f"📦 Tổng tồn Đài Tư: <b>{total_orders:,} đơn</b> · <b>{total_kg:,.1f} kg</b>")
         lines.append(f"🚚 Hàng cần đi các tỉnh: <b>{transit_count:,} đơn</b> · <b>{transit_kg:,.1f} kg</b>\n")
 
         if not route_reports:
-            lines.append("ℹ️ <i>Trong 1h30p tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>")
+            lines.append(f"ℹ️ <i>Trong {window_hours} giờ tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>")
         else:
             lines.append(f"🚛 <b>DANH SÁCH {len(route_reports)} TUYẾN XUẤT BẾN GẦN NHẤT:</b>\n")
             # Liệt kê toàn bộ các tuyến, chỉ hiện tuyến xe và tỉnh tồn
@@ -744,8 +747,8 @@ class B2BTonAdvisor:
     def register_commands(self):
         url = f"https://api.telegram.org/bot{self.bot_token}/setMyCommands"
         commands = [
-            {'command': 'ton', 'description': 'Lấy cảnh báo hàng tồn & lịch tải tuyến 1h30p tới'},
-            {'command': 'check', 'description': 'Kiểm tra lịch xe xuất bến gần nhất'},
+            {'command': 'ton', 'description': 'Lấy cảnh báo hàng tồn & lịch tải tuyến 4 giờ tới'},
+            {'command': 'check', 'description': 'Kiểm tra lịch xe xuất bến gần nhất (4 giờ tới)'},
             {'command': 'login', 'description': 'Đăng nhập Metabase tự động vĩnh viễn (/login <email> <mk>)'},
             {'command': 'token', 'description': 'Cập nhật session token Metabase thủ công (/token <id>)'},
             {'command': 'sheet', 'description': 'Cập nhật link Google Sheet (/sheet <link>)'},
@@ -789,7 +792,7 @@ class B2BTonAdvisor:
             help_msg = (
                 f"👋 Chào <b>{sender_name}</b>! Tôi là Bot Cảnh Báo Tồn B2B & Lịch Xe GHN.\n\n"
                 f"🛠 <b>CÁC LỆNH HỖ TRỢ:</b>\n"
-                f"• Gõ <code>/ton</code> hoặc <code>/check</code>: Quét tồn Metabase và báo cáo lịch tải tuyến 1h30p tới.\n"
+                f"• Gõ <code>/ton</code> hoặc <code>/check</code>: Quét tồn và báo cáo lịch tải tuyến 4 giờ tới.\n"
                 f"• Gõ <code>/login &lt;email&gt; &lt;mật_khẩu&gt;</code>: <b>Tự động đăng nhập Metabase</b> — Bot sẽ tự động lấy và gia hạn token mới vĩnh viễn, không bao giờ lo hết hạn token! <i>(Nên chat riêng với Bot để bảo mật mật khẩu)</i>.\n"
                 f"• Gõ <code>/token &lt;session_token&gt;</code>: Cập nhật mã Cookie <code>metabase.SESSION</code> mới khi phiên hết hạn.\n"
                 f"• Gõ <code>/sheet &lt;link_ggsheet&gt;</code>: Cập nhật đường link Google Sheet chi tiết.\n"
