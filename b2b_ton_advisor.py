@@ -5,8 +5,15 @@ import re
 import os
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+
+# Cố định múi giờ Việt Nam (GMT+7) cho Cloud Server (Render chạy UTC)
+VN_TZ = timezone(timedelta(hours=7))
+
+def get_vietnam_now():
+    """Lấy thời gian hiện tại chuẩn Việt Nam (GMT+7) dù chạy trên máy tính hay Cloud Server."""
+    return datetime.now(timezone.utc).astimezone(VN_TZ).replace(tzinfo=None)
 
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -529,7 +536,7 @@ class B2BTonAdvisor:
             return self.gg_sheet_url
 
     def process_and_report(self, target_chat_id=None, target_thread_id=None, send_tele=True):
-        now = datetime.now()
+        now = get_vietnam_now()
         now_str = now.strftime('%H:%M %d/%m/%Y')
         curr_time_str = now.strftime('%H:%M')
         window_end = now + timedelta(minutes=90)
@@ -629,6 +636,27 @@ class B2BTonAdvisor:
         # Sort chronologically by minutes until departure, then highest KG
         route_reports.sort(key=lambda x: (x['MinsAway'], -x['TotalKG']))
 
+        # Chọn 3 tuyến xuất bến gần nhất (tránh chọn trùng lặp cùng 1 tỉnh/tập tỉnh để báo cáo gọn gàng, không bị rối)
+        selected_reports = []
+        seen_prov_sets = set()
+        for r in route_reports:
+            prov_key = tuple(sorted(list(r['Provinces'].keys())))
+            if prov_key in seen_prov_sets:
+                continue
+            selected_reports.append(r)
+            seen_prov_sets.add(prov_key)
+            if len(selected_reports) == 3:
+                break
+
+        if len(selected_reports) < 3:
+            for r in route_reports:
+                if r not in selected_reports:
+                    selected_reports.append(r)
+                    if len(selected_reports) == 3:
+                        break
+
+        route_reports = selected_reports
+
         # Format Telegram Message as requested
         lines = []
         lines.append("🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN (1H30P TỚI)</b>")
@@ -640,7 +668,7 @@ class B2BTonAdvisor:
         if not route_reports:
             lines.append("ℹ️ <i>Trong 1h30p tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>")
         else:
-            lines.append(f"🚛 <b>DANH SÁCH LỊCH TẢI TUYẾN ({len(route_reports)} TUYẾN KHỚP LỊCH):</b>\n")
+            lines.append(f"🚛 <b>DANH SÁCH {len(route_reports)} TUYẾN XUẤT BẾN GẦN NHẤT:</b>\n")
             # Liệt kê toàn bộ các tuyến, chỉ hiện tuyến xe và tỉnh tồn
             for idx, r in enumerate(route_reports, 1):
                 tt_str = f"{r['TrongTai']} kg" if r['TrongTai'] else "Xe cố định"
