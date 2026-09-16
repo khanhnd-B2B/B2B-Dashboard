@@ -807,8 +807,8 @@ with tab4:
     max-height: 600px;
     overflow-y: auto;
     overflow-x: auto;
-    border: 1px solid #ddd;
-    border-radius: 5px;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 6px;
     margin-top: 10px;
     margin-bottom: 10px;
 }}
@@ -816,26 +816,31 @@ with tab4:
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    line-height: 1.5;
 }}
 .route-table-wrapper th, .route-table-wrapper td {{
     text-align: left;
     padding: 8px 10px;
-    border: 1px solid #ddd;
+    border: 1px solid rgba(128, 128, 128, 0.2);
     white-space: normal; /* FORCES TEXT WRAP */
     vertical-align: top;
 }}
 .route-table-wrapper th {{
-    background-color: #004b8b;
-    color: white;
+    background-color: #004b8b !important;
+    color: #ffffff !important;
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 2;
+    font-weight: 600;
+}}
+.route-table-wrapper td {{
+    color: inherit !important;
 }}
 .route-table-wrapper tr:nth-child(even) {{
-    background-color: #f9f9f9;
+    background-color: rgba(128, 128, 128, 0.08);
 }}
 .route-table-wrapper tr:hover {{
-    background-color: #f1f1f1;
+    background-color: rgba(128, 128, 128, 0.18);
 }}
 </style>
 <div class="route-table-wrapper">
