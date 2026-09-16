@@ -269,19 +269,38 @@ class B2BTonAdvisor:
     def fetch_live_sheet_backlog(self):
         """Đọc trực tiếp dữ liệu đơn tồn từ Google Sheet tab TonUpdate1h."""
         token_path = os.path.join(os.path.dirname(__file__), 'token.json')
-        if not os.path.exists(token_path):
-            raise Exception("Không tìm thấy file token.json để truy cập Google Sheet")
 
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
 
         SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        creds = None
+
+        # 1. Ưu tiên đọc credentials từ biến môi trường GOOGLE_TOKEN (cho Cloud Render/Railway/Koyeb)
+        env_token = os.environ.get('GOOGLE_TOKEN')
+        if env_token:
+            try:
+                token_data = json.loads(env_token)
+                creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+            except Exception as e:
+                print(f"Lỗi nạp GOOGLE_TOKEN từ môi trường: {e}")
+
+        # 2. Đọc từ file token.json
+        if not creds and os.path.exists(token_path):
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+
+        if not creds:
+            raise Exception("Không tìm thấy xác thực Google (token.json hoặc biến môi trường GOOGLE_TOKEN)")
+
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            with open(token_path, 'w') as token:
-                token.write(creds.to_json())
+            if os.path.exists(token_path):
+                try:
+                    with open(token_path, 'w') as token:
+                        token.write(creds.to_json())
+                except Exception:
+                    pass
 
         service = build('sheets', 'v4', credentials=creds)
         tab_name = 'TonUpdate1h'
@@ -845,7 +864,32 @@ class B2BTonAdvisor:
         if is_command or is_mention or (is_private and is_keyword) or (thread_id == self.thread_id and is_keyword):
             self.process_and_report(target_chat_id=chat_id, target_thread_id=thread_id, send_tele=True)
 
+def start_health_server(port=8080):
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(b"<h1>B2B Ton Advisor Bot is Running Online 24/7!</h1><p>Status: OK</p>")
+
+        def log_message(self, format, *args):
+            pass
+
+    try:
+        server = HTTPServer(('0.0.0.0', port), HealthHandler)
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        print(f"🌐 Đã khởi chạy Health Server trên port {port} (hỗ trợ Render/Railway 24/7)")
+    except Exception as e:
+        print(f"Không thể mở Health Server trên port {port}: {e}")
+
     def run_listener(self):
+        port = os.environ.get('PORT')
+        if port:
+            start_health_server(int(port))
         print("🚀 Bắt đầu lắng nghe tin nhắn Telegram (Chế độ gọi bot mới báo)...")
         self.register_commands()
         offset = None
