@@ -802,45 +802,51 @@ with tab4:
 
             # Display table with HTML to force text wrapping
             html_table = df_display.to_html(index=False, escape=False)
-            st.markdown(f"""
-            <style>
-            .route-table-wrapper {{
-                max-height: 600px;
-                overflow-y: auto;
-                overflow-x: auto;
-                border: 1px solid #ddd;
-                border-radius: 5px;
-            }}
-            .route-table-wrapper table {{
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 14px;
-            }}
-            .route-table-wrapper th, .route-table-wrapper td {{
-                text-align: left;
-                padding: 10px;
-                border: 1px solid #ddd;
-                white-space: normal; /* FORCES TEXT WRAP */
-                vertical-align: top;
-            }}
-            .route-table-wrapper th {{
-                background-color: #004b8b;
-                color: white;
-                position: sticky;
-                top: 0;
-                z-index: 1;
-            }}
-            .route-table-wrapper tr:nth-child(even) {{
-                background-color: #f9f9f9;
-            }}
-            .route-table-wrapper tr:hover {{
-                background-color: #f1f1f1;
-            }}
-            </style>
-            <div class="route-table-wrapper">
-                {html_table}
-            </div>
-            """, unsafe_allow_html=True)
+            table_html = f"""<style>
+.route-table-wrapper {{
+    max-height: 600px;
+    overflow-y: auto;
+    overflow-x: auto;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}}
+.route-table-wrapper table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}}
+.route-table-wrapper th, .route-table-wrapper td {{
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    white-space: normal; /* FORCES TEXT WRAP */
+    vertical-align: top;
+}}
+.route-table-wrapper th {{
+    background-color: #004b8b;
+    color: white;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}}
+.route-table-wrapper tr:nth-child(even) {{
+    background-color: #f9f9f9;
+}}
+.route-table-wrapper tr:hover {{
+    background-color: #f1f1f1;
+}}
+</style>
+<div class="route-table-wrapper">
+{html_table}
+</div>"""
+
+            if hasattr(st, 'html'):
+                st.html(table_html)
+            else:
+                clean_html = "\n".join(l.lstrip() for l in table_html.splitlines())
+                st.markdown(clean_html, unsafe_allow_html=True)
 
             st.caption(f"📁 Nguồn dữ liệu: `{os.path.basename(route_file_path)}`")
         except Exception as e:
