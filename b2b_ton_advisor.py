@@ -327,6 +327,8 @@ class B2BTonAdvisor:
                     'ProvincesServed': provinces_served
                 })
 
+        return trips_list
+
     def sync_to_google_sheet(self, df_transit, upcoming_trips, now_str):
         token_path = os.path.join(os.path.dirname(__file__), 'token.json')
         if not os.path.exists(token_path):

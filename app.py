@@ -682,6 +682,7 @@ with tab4:
             st.write(msg)
 
     route_files = [
+        'data chuyến Truck 7 ngày 11.09.xlsx',
         'data chuyến cố định 7 ngày gần nhất 9.9.xlsx',
         'data chuyến cố định 7 ngày gần nhất 3.9.xlsx',
     ]
@@ -695,8 +696,25 @@ with tab4:
     if route_file_path:
         try:
             df_routes_raw = pd.read_excel(route_file_path, header=1)
-            # Parse departure time
-            df_routes_raw['GioDuKienBatDau_GMT7'] = pd.to_datetime(df_routes_raw['GioDuKienBatDau_GMT7'], errors='coerce')
+            
+            # Check if format is stop-by-stop (like data chuyến Truck 7 ngày 11.09.xlsx)
+            if 'ThuTuDiem' in df_routes_raw.columns:
+                df_routes_raw['GioDuKienDen_GMT7'] = pd.to_datetime(df_routes_raw['GioDuKienDen_GMT7'], errors='coerce')
+                df_sorted = df_routes_raw.sort_values(['MaChuyen', 'ThuTuDiem'])
+                first_stops = df_sorted.drop_duplicates(subset=['MaChuyen'], keep='first')[['MaChuyen', 'TenDiem', 'GioDuKienDen_GMT7', 'TrongTai', 'MaKho', 'MaTuyen']]
+                first_stops.rename(columns={'TenDiem': 'DiemDauTien', 'GioDuKienDen_GMT7': 'GioDuKienBatDau_GMT7'}, inplace=True)
+                last_stops = df_sorted.drop_duplicates(subset=['MaChuyen'], keep='last')[['MaChuyen', 'TenDiem']]
+                last_stops.rename(columns={'TenDiem': 'DiemCuoiCung'}, inplace=True)
+
+                routes_str = df_sorted.groupby('MaChuyen')['TenDiem'].apply(lambda x: ' → '.join(x.dropna().astype(str))).reset_index()
+                routes_str.rename(columns={'TenDiem': 'ToanBoDiemDi'}, inplace=True)
+
+                counts = df_sorted.groupby('MaChuyen')['TenDiem'].count().reset_index()
+                counts.rename(columns={'TenDiem': 'SoDiem'}, inplace=True)
+
+                df_routes_raw = first_stops.merge(last_stops, on='MaChuyen').merge(routes_str, on='MaChuyen').merge(counts, on='MaChuyen')
+            else:
+                df_routes_raw['GioDuKienBatDau_GMT7'] = pd.to_datetime(df_routes_raw['GioDuKienBatDau_GMT7'], errors='coerce')
 
             # Aggregate to unique routes
             df_routes = df_routes_raw.groupby('MaTuyen').agg(
