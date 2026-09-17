@@ -295,42 +295,72 @@ class B2BTonAdvisor:
         res.raise_for_status()
         return pd.DataFrame(res.json())
 
-    def fetch_live_sheet_backlog(self):
-        """Đọc trực tiếp dữ liệu đơn tồn từ Google Sheet tab TonUpdate1h."""
+    def get_google_credentials(self):
+        """Lấy xác thực Google từ GOOGLE_TOKEN, advisor_config.json hoặc token.json."""
         token_path = os.path.join(os.path.dirname(__file__), 'token.json')
-
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
-        from googleapiclient.discovery import build
+        import base64
 
         SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
         creds = None
 
-        # 1. Ưu tiên đọc credentials từ biến môi trường GOOGLE_TOKEN (cho Cloud Render/Railway/Koyeb)
+        # 1. Biến môi trường GOOGLE_TOKEN (chuỗi JSON hoặc base64)
         env_token = os.environ.get('GOOGLE_TOKEN')
         if env_token:
             try:
-                token_data = json.loads(env_token)
+                try:
+                    token_data = json.loads(env_token)
+                except Exception:
+                    token_data = json.loads(base64.b64decode(env_token).decode('utf-8'))
                 creds = Credentials.from_authorized_user_info(token_data, SCOPES)
             except Exception as e:
                 print(f"Lỗi nạp GOOGLE_TOKEN từ môi trường: {e}")
 
-        # 2. Đọc từ file token.json
+        # 2. File advisor_config.json đã lưu (google_token_b64)
+        if not creds and hasattr(self, 'config'):
+            b64_token = self.config.get('google_token_b64')
+            if b64_token:
+                try:
+                    token_data = json.loads(base64.b64decode(b64_token).decode('utf-8'))
+                    creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+                except Exception as e:
+                    print(f"Lỗi nạp google_token_b64 từ advisor_config.json: {e}")
+
+        # 3. File token.json
         if not creds and os.path.exists(token_path):
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+            try:
+                creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+            except Exception as e:
+                print(f"Lỗi nạp token.json: {e}")
 
         if not creds:
-            raise Exception("Không tìm thấy xác thực Google (token.json hoặc biến môi trường GOOGLE_TOKEN)")
+            return None
 
         if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            if os.path.exists(token_path):
-                try:
-                    with open(token_path, 'w') as token:
-                        token.write(creds.to_json())
-                except Exception:
-                    pass
+            try:
+                creds.refresh(Request())
+                if hasattr(self, 'config') and 'google_token_b64' in self.config:
+                    self.config['google_token_b64'] = base64.b64encode(creds.to_json().encode('utf-8')).decode('utf-8')
+                    self.save_config()
+                if os.path.exists(token_path):
+                    try:
+                        with open(token_path, 'w') as token:
+                            token.write(creds.to_json())
+                    except Exception:
+                        pass
+            except Exception as e:
+                print(f"Lỗi refresh google token: {e}")
 
+        return creds
+
+    def fetch_live_sheet_backlog(self):
+        """Đọc trực tiếp dữ liệu đơn tồn từ Google Sheet tab TonUpdate1h."""
+        creds = self.get_google_credentials()
+        if not creds:
+            raise Exception("Không tìm thấy xác thực Google (advisor_config.json, token.json hoặc biến môi trường GOOGLE_TOKEN)")
+
+        from googleapiclient.discovery import build
         service = build('sheets', 'v4', credentials=creds)
         tab_name = 'TonUpdate1h'
         res = service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range=f'{tab_name}!A1:Z').execute()
@@ -424,23 +454,13 @@ class B2BTonAdvisor:
     get_upcoming_trips_in_90min = get_upcoming_trips
 
     def sync_to_google_sheet(self, df_transit, upcoming_trips, now_str):
-        token_path = os.path.join(os.path.dirname(__file__), 'token.json')
-        if not os.path.exists(token_path):
-            print("⚠️ Không tìm thấy token.json để đồng bộ Google Sheet.")
+        creds = self.get_google_credentials()
+        if not creds:
+            print("⚠️ Không tìm thấy xác thực Google để đồng bộ Google Sheet.")
             return self.gg_sheet_url
 
         try:
-            from google.oauth2.credentials import Credentials
-            from google.auth.transport.requests import Request
             from googleapiclient.discovery import build
-
-            SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-            if creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                with open(token_path, 'w') as token:
-                    token.write(creds.to_json())
-
             service = build('sheets', 'v4', credentials=creds)
             spreadsheet_id = self.spreadsheet_id
             tab_name = 'Ton_Metabase_Live'
@@ -546,7 +566,12 @@ class B2BTonAdvisor:
         end_time_str = window_end.strftime('%H:%M')
 
         chat_dst = target_chat_id or self.chat_id
-        thread_dst = target_thread_id if target_thread_id is not None else self.thread_id
+        if target_thread_id is not None:
+            thread_dst = target_thread_id
+        elif str(chat_dst) == str(self.chat_id):
+            thread_dst = self.thread_id
+        else:
+            thread_dst = None
 
         print(f"[{now_str}] Đang quét đơn tồn ({curr_time_str} ➔ {end_time_str}, khung {window_hours}h)...")
 
@@ -701,7 +726,12 @@ class B2BTonAdvisor:
 
     def send_telegram(self, text, chat_id=None, thread_id=None):
         dst_chat = chat_id or self.chat_id
-        dst_thread = thread_id if thread_id is not None else self.thread_id
+        if thread_id is not None:
+            dst_thread = thread_id
+        elif str(dst_chat) == str(self.chat_id):
+            dst_thread = self.thread_id
+        else:
+            dst_thread = None
 
         if not self.bot_token or not dst_chat:
             print("Telegram Token/Chat ID chưa được cấu hình. Bỏ qua gửi tin.")
@@ -742,13 +772,20 @@ class B2BTonAdvisor:
                 target_desc = f"Topic {dst_thread}" if dst_thread else f"Chat {dst_chat}"
                 print(f"✅ Đã gửi phần {idx}/{len(chunks)} lên Telegram {target_desc} thành công!")
             except Exception as e:
-                print(f"❌ Lỗi gửi Telegram phần {idx}: {e}")
+                err_detail = ""
+                try:
+                    if 'r' in locals() and hasattr(r, 'text'):
+                        err_detail = f" - Response: {r.text}"
+                except Exception:
+                    pass
+                print(f"❌ Lỗi gửi Telegram phần {idx}: {e}{err_detail}")
 
     def register_commands(self):
         url = f"https://api.telegram.org/bot{self.bot_token}/setMyCommands"
         commands = [
             {'command': 'ton', 'description': 'Lấy cảnh báo hàng tồn & lịch tải tuyến 4 giờ tới'},
             {'command': 'check', 'description': 'Kiểm tra lịch xe xuất bến gần nhất (4 giờ tới)'},
+            {'command': 'status', 'description': 'Kiểm tra trạng thái hoạt động trực tuyến 24/7 của Bot'},
             {'command': 'login', 'description': 'Đăng nhập Metabase tự động vĩnh viễn (/login <email> <mk>)'},
             {'command': 'token', 'description': 'Cập nhật session token Metabase thủ công (/token <id>)'},
             {'command': 'sheet', 'description': 'Cập nhật link Google Sheet (/sheet <link>)'},
@@ -908,14 +945,45 @@ class B2BTonAdvisor:
             self.send_telegram(confirm_msg, chat_id=chat_id, thread_id=thread_id)
             return
 
-        # 4. Trigger Report: /ton, /check, /baocao, mention bot, or keywords
+        # 4. Status / Ping
+        if text.startswith('/status') or text.startswith('/ping'):
+            now = get_vietnam_now()
+            status_msg = (
+                f"🤖 <b>BOT CẢNH BÁO TỒN B2B ĐANG ONLINE 24/7!</b>\n\n"
+                f"⏰ Giờ hệ thống: <b>{now.strftime('%H:%M:%S %d/%m/%Y')}</b> (Giờ VN)\n"
+                f"📊 Nguồn tồn chính: Google Sheet tab <code>TonUpdate1h</code>\n"
+                f"🚚 Cửa sổ quét xe: <b>4 giờ tới</b>\n"
+                f"🎯 Nhóm báo mặc định: Topic <code>{self.thread_id}</code>\n\n"
+                f"👉 Gõ <code>/ton</code> hoặc <code>/check</code> để lấy báo cáo ngay!"
+            )
+            self.send_telegram(status_msg, chat_id=chat_id, thread_id=thread_id)
+            return
+
+        # 5. Trigger Report: /ton, /check, /baocao, mention bot, or keywords
         is_command = text.startswith('/ton') or text.startswith('/check') or text.startswith('/baocao')
         is_mention = '@CanhBaoHangVeGXT_Bot' in text or 'CanhBaoHangVeGXT_Bot' in text
-        is_keyword = any(k in text.lower() for k in ['báo tồn', 'check tồn', 'lịch xe', 'hàng tồn', 'xem tồn', 'báo cáo tồn'])
+        lower_text = text.lower()
+        is_keyword = any(k in lower_text for k in [
+            'báo tồn', 'check tồn', 'lịch xe', 'hàng tồn', 'xem tồn', 'báo cáo tồn',
+            'kiem tra ton', 'bao ton', 'xem ton', 'lich xe', 'ton', 'tồn', 'check'
+        ])
         is_private = chat.get('type') == 'private'
 
-        if is_command or is_mention or (is_private and is_keyword) or (thread_id == self.thread_id and is_keyword):
+        # Match command, mention, private chat with keyword, or topic with keyword
+        if is_command or is_mention or (is_private and is_keyword) or (str(thread_id) == str(self.thread_id) and is_keyword):
             self.process_and_report(target_chat_id=chat_id, target_thread_id=thread_id, send_tele=True)
+            return
+
+        # Fallback for 1-on-1 private chat if message was not recognized
+        if is_private:
+            fallback_msg = (
+                f"👋 Chào <b>{sender_name}</b>!\n\n"
+                f"Tôi đã nhận được tin nhắn: <i>\"{text}\"</i>\n\n"
+                f"👉 Để lấy báo cáo hàng tồn & 3 tuyến xe gần nhất trong 4 giờ tới, bạn hãy gửi lệnh:\n"
+                f"• <code>/ton</code> hoặc <code>/check</code>\n\n"
+                f"ℹ️ Gõ <code>/help</code> để xem hướng dẫn đầy đủ các lệnh."
+            )
+            self.send_telegram(fallback_msg, chat_id=chat_id, thread_id=thread_id)
 
     def run_listener(self):
         port = os.environ.get('PORT')
@@ -934,17 +1002,20 @@ class B2BTonAdvisor:
                 url = f"https://api.telegram.org/bot{self.bot_token}/getUpdates"
                 res = requests.get(url, params=params, timeout=35)
                 if res.status_code != 200:
+                    print(f"⚠️ Telegram polling status {res.status_code}: {res.text}")
                     time.sleep(3)
                     continue
 
                 data = res.json()
                 if not data.get('ok'):
+                    print(f"⚠️ Telegram getUpdates not ok: {data}")
                     time.sleep(3)
                     continue
 
                 for update in data.get('result', []):
                     offset = update['update_id'] + 1
                     self.handle_telegram_update(update)
+
 
             except requests.exceptions.Timeout:
                 continue
