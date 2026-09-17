@@ -179,6 +179,8 @@ class B2BTonAdvisor:
             except Exception as e:
                 print(f"Lỗi đọc file cấu hình {CONFIG_FILE}: {e}")
 
+        self.config = cfg
+
         # Allow environment overrides
         self.metabase_url = os.environ.get('METABASE_URL', cfg.get('metabase_url', 'https://data-bi.ghn.vn'))
         self.session_token = os.environ.get('METABASE_SESSION', cfg.get('metabase_session', ''))
@@ -196,7 +198,8 @@ class B2BTonAdvisor:
         m = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', self.gg_sheet_url)
         if m:
             self.spreadsheet_id = m.group(1)
-        cfg = {
+        cfg = getattr(self, 'config', {}).copy()
+        cfg.update({
             'metabase_url': self.metabase_url,
             'metabase_session': self.session_token,
             'metabase_username': self.metabase_username,
@@ -206,7 +209,8 @@ class B2BTonAdvisor:
             'telegram_chat_id': self.chat_id,
             'telegram_message_thread_id': self.thread_id,
             'gg_sheet_url': self.gg_sheet_url
-        }
+        })
+        self.config = cfg
         try:
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(cfg, f, ensure_ascii=False, indent=2)
@@ -318,8 +322,14 @@ class B2BTonAdvisor:
                 print(f"Lỗi nạp GOOGLE_TOKEN từ môi trường: {e}")
 
         # 2. File advisor_config.json đã lưu (google_token_b64)
-        if not creds and hasattr(self, 'config'):
-            b64_token = self.config.get('google_token_b64')
+        if not creds:
+            b64_token = getattr(self, 'config', {}).get('google_token_b64')
+            if not b64_token and os.path.exists(CONFIG_FILE):
+                try:
+                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        b64_token = json.load(f).get('google_token_b64')
+                except Exception:
+                    pass
             if b64_token:
                 try:
                     token_data = json.loads(base64.b64decode(b64_token).decode('utf-8'))

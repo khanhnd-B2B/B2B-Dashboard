@@ -22,17 +22,37 @@ try:
     env_token = os.environ.get('GOOGLE_TOKEN')
     if env_token:
         try:
-            creds = Credentials.from_authorized_user_info(json.loads(env_token), SCOPES)
+            import base64
+            try:
+                token_data = json.loads(env_token)
+            except Exception:
+                token_data = json.loads(base64.b64decode(env_token).decode('utf-8'))
+            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
             print("Đã nạp credentials từ biến môi trường GOOGLE_TOKEN.")
         except Exception as e:
             print(f"Lỗi đọc GOOGLE_TOKEN từ môi trường: {e}")
 
+    # 2. Đọc từ advisor_config.json đã lưu trong Git (google_token_b64)
+    if not creds and os.path.exists('advisor_config.json'):
+        try:
+            import base64
+            with open('advisor_config.json', 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+            b64_token = cfg.get('google_token_b64')
+            if b64_token:
+                token_data = json.loads(base64.b64decode(b64_token).decode('utf-8'))
+                creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+                print("Đã nạp credentials từ advisor_config.json (google_token_b64).")
+        except Exception as e:
+            print(f"Lỗi đọc advisor_config.json: {e}")
+
+    # 3. Đọc từ token.json
     if not creds and os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
         print("Đã nạp credentials từ file token.json.")
 
     if not creds:
-        print('ERROR: Không tìm thấy xác thực Google (token.json hoặc biến GOOGLE_TOKEN).')
+        print('ERROR: Không tìm thấy xác thực Google (token.json, advisor_config.json hoặc biến GOOGLE_TOKEN).')
         sys.exit(1)
 
     if creds.expired and creds.refresh_token:

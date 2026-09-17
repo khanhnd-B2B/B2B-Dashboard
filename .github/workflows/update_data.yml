@@ -58,7 +58,8 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python send_telegram.py
 
-      - name: Ping Streamlit Dashboard (Keep Awake)
+      - name: Ping Streamlit Dashboard & Render Bot (Keep Awake)
         run: |
           curl -sL https://b2b-dashboard-hydt.streamlit.app > /dev/null || true
-          echo "Streamlit dashboard pinged."
+          curl -sL https://b2b-ton-bot.onrender.com > /dev/null || true
+          echo "Streamlit dashboard and Render Bot pinged."
