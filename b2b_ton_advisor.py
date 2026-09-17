@@ -153,6 +153,17 @@ def start_health_server(port=8080):
             self.end_headers()
             self.wfile.write(b"<h1>B2B Ton Advisor Bot is Running Online 24/7!</h1><p>Status: OK</p>")
 
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+
+        def do_POST(self):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(b"OK")
+
         def log_message(self, format, *args):
             pass
 
