@@ -7,12 +7,15 @@ from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
 SPREADSHEET_ID = '1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU'
 RANGE_NAME = 'DataSorting'
 MASTER_FILE = 'Data B2B Master.xlsx'
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
-print(f'[{datetime.datetime.now()}] Bắt đầu kéo dữ liệu từ Google Sheets API (Tab {RANGE_NAME})...')
+print(f'[{datetime.datetime.now()}] Bat dau keo du lieu tu Google Sheets API (Tab {RANGE_NAME})...')
 
 try:
     creds = None
