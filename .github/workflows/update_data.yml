@@ -2,8 +2,8 @@ name: Auto Update B2B Data
 
 on:
   schedule:
-    # 08:30 AM Vietnam time (UTC+7) = 01:30 AM UTC
-    - cron: '30 1 * * *'
+    # Chạy 3 lần mỗi ngày theo giờ VN (UTC+7): 08:30 (01:30 UTC), 12:30 (05:30 UTC), 18:30 (11:30 UTC)
+    - cron: '30 1,5,11 * * *'
   workflow_dispatch: # Cho phep bam chay thu cong tren GitHub
 
 jobs:
@@ -34,6 +34,8 @@ jobs:
           fi
 
       - name: Run daily_update.py
+        env:
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
         run: python daily_update.py
 
       - name: Commit and push changes

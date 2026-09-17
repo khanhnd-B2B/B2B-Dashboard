@@ -124,6 +124,8 @@ def load_data():
             df['KhoiLuongKG'] = pd.to_numeric(df['KhoiLuongKG'].astype(str).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
         if 'Client_ID' in df.columns:
             df['Client_ID'] = pd.to_numeric(df['Client_ID'], errors='coerce')
+        if 'ClientName' in df.columns:
+            df['ClientName'] = df['ClientName'].astype(str).str.strip().replace({'nan': None, 'None': None, '': None})
     return df, source_used
 
 df_raw, master_file_path = load_data()
@@ -175,11 +177,19 @@ with col3:
     kho_nhap_filter = st.selectbox("🏭 KHO NHẬP:", options=allowed_khos)
 with col4:
     if 'ClientName' in df.columns:
-        clients = st.multiselect("🎯 BỘ LỌC KHÁCH HÀNG:", options=df['ClientName'].dropna().unique())
+        client_options = sorted([c for c in df['ClientName'].dropna().unique() if str(c).strip()])
     elif 'Client_ID' in df.columns:
-        clients = st.multiselect("🎯 BỘ LỌC KHÁCH HÀNG:", options=df['Client_ID'].dropna().unique())
+        client_options = sorted([c for c in df['Client_ID'].dropna().unique() if str(c).strip()])
     else:
-        clients = []
+        client_options = []
+
+    clients = st.multiselect(
+        "🎯 BỘ LỌC KHÁCH HÀNG (Chọn nhiều):",
+        options=client_options,
+        default=[],
+        placeholder="Tích chọn 1 hoặc nhiều khách hàng...",
+        help="💡 Bạn có thể click chọn hoặc gõ tìm kiếm để tích chọn nhiều khách hàng cùng lúc. Để trống = Xem toàn bộ khách hàng."
+    )
 
 freq_map = {'Ngày (D)': 'D', 'Tuần (W)': 'W', 'Tháng (M)': 'M'}
 nperiod_map = {'D': 30, 'W': 6, 'M': 3}
