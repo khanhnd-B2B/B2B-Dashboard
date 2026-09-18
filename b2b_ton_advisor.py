@@ -124,6 +124,7 @@ def extract_province(name):
             if 'hoà bình' in p.lower() or 'hòa bình' in p.lower(): return 'Hòa Bình'
             if 'khánh ho' in p.lower(): return 'Khánh Hòa'
             if 'brvt' in p.lower() or 'vũng tàu' in p.lower(): return 'Bà Rịa - Vũng Tàu'
+            if 'thừa thiên huế' in p.lower() or p == 'Huế': return 'Thừa Thiên Huế'
             if p == 'HCM': return 'Hồ Chí Minh'
             return p
 
@@ -204,6 +205,7 @@ class B2BTonAdvisor:
         self.gg_sheet_url = os.environ.get('GG_SHEET_URL', cfg.get('gg_sheet_url', ''))
         m = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', self.gg_sheet_url)
         self.spreadsheet_id = m.group(1) if m else '1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU'
+        self.last_excluded_count = 0
 
     def save_config(self):
         m = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', self.gg_sheet_url)
@@ -376,7 +378,7 @@ class B2BTonAdvisor:
         return creds
 
     def fetch_live_sheet_backlog(self):
-        """Đọc trực tiếp dữ liệu đơn tồn từ Google Sheet tab TonUpdate1h."""
+        """Đọc trực tiếp dữ liệu đơn tồn từ Google Sheet tab TonUpdate1h, so sánh với DataSorting để loại đơn đã xuất kho."""
         creds = self.get_google_credentials()
         if not creds:
             raise Exception("Không tìm thấy xác thực Google (advisor_config.json, token.json hoặc biến môi trường GOOGLE_TOKEN)")
@@ -384,13 +386,47 @@ class B2BTonAdvisor:
         from googleapiclient.discovery import build
         service = build('sheets', 'v4', credentials=creds)
         tab_name = 'TonUpdate1h'
-        res = service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range=f'{tab_name}!A1:Z').execute()
-        values = res.get('values', [])
+
+        ranges = [f'{tab_name}!A1:Z', 'DataSorting!E:S']
+        try:
+            res = service.spreadsheets().values().batchGet(spreadsheetId=self.spreadsheet_id, ranges=ranges).execute()
+            value_ranges = res.get('valueRanges', [])
+            values = value_ranges[0].get('values', []) if len(value_ranges) > 0 else []
+            sort_values = value_ranges[1].get('values', []) if len(value_ranges) > 1 else []
+        except Exception as e_batch:
+            print(f"Lỗi batchGet, chuyển sang get riêng lẻ tab {tab_name}: {e_batch}")
+            res = service.spreadsheets().values().get(spreadsheetId=self.spreadsheet_id, range=f'{tab_name}!A1:Z').execute()
+            values = res.get('values', [])
+            sort_values = []
+
         if not values or len(values) < 2:
             raise Exception(f"Sheet tab '{tab_name}' trống hoặc không có dữ liệu.")
 
         headers = values[0]
         df = pd.DataFrame(values[1:], columns=headers)
+
+        self.last_excluded_count = 0
+        # So sánh với DataSorting: nếu trạng thái cột S là "Đã xuất khỏi kho thao tác gần nhất" thì loại bỏ
+        if sort_values and len(sort_values) > 1:
+            try:
+                sort_headers = sort_values[0]
+                df_sort = pd.DataFrame(sort_values[1:], columns=sort_headers)
+                col_don_sort = 'MaDonGoc' if 'MaDonGoc' in df_sort.columns else df_sort.columns[0]
+                col_status_sort = 'TrangThaiViTriInside' if 'TrangThaiViTriInside' in df_sort.columns else df_sort.columns[-1]
+
+                mask_exited = df_sort[col_status_sort].astype(str).str.strip().str.lower() == 'đã xuất khỏi kho thao tác gần nhất'.lower()
+                exited_orders = set(df_sort.loc[mask_exited, col_don_sort].dropna().astype(str).str.strip())
+
+                col_don_ton = 'MaDon' if 'MaDon' in df.columns else ('MaDonGoc' if 'MaDonGoc' in df.columns else df.columns[0])
+                before_len = len(df)
+                if exited_orders:
+                    df = df[~df[col_don_ton].astype(str).str.strip().isin(exited_orders)].copy()
+                    excluded_cnt = before_len - len(df)
+                    self.last_excluded_count = excluded_cnt
+                    print(f"📊 Đã loại bỏ {excluded_cnt} đơn có trạng thái 'Đã xuất khỏi kho thao tác gần nhất' (cột S DataSorting). Còn lại {len(df)} đơn tồn thực tế.")
+            except Exception as e_filter:
+                print(f"⚠️ Cảnh báo: Lỗi lọc đơn xuất kho từ DataSorting ({e_filter}). Tiếp tục với dữ liệu gốc {tab_name}.")
+
         return df
 
     def fetch_live_data(self):
@@ -511,9 +547,9 @@ class B2BTonAdvisor:
                     status = 'Chờ chuyến sau'
 
                 export_rows.append({
-                    'Mã Đơn Gốc': str(r.get('MaDonGoc', '')),
+                    'Mã Đơn Gốc': str(r.get('MaDonGoc') or r.get('MaDon', '')),
                     'Mã Kiện': str(r.get('MaKien', '')),
-                    'Khách Hàng': str(r.get('ClientName', '')),
+                    'Khách Hàng': str(r.get('ClientName') or r.get('TenKhachHang', '')),
                     'Trạng Thái': str(r.get('TrangThai', '')),
                     'Kho Lấy': str(r.get('KhoLay', '')),
                     'Kho Hiện Tại': str(r.get('KhoHienTai', '')),
@@ -641,98 +677,78 @@ class B2BTonAdvisor:
         upcoming_trips = self.get_upcoming_trips(now, window_hours=window_hours)
         print(f"Tìm thấy {len(upcoming_trips)} chuyến xe xuất bến trong khung giờ {curr_time_str} - {end_time_str} ({window_hours} giờ tới).")
 
-        def get_mins_diff(hhmm, current_dt):
-            h, m = map(int, hhmm.split(':'))
-            target = current_dt.replace(hour=h, minute=m, second=0, microsecond=0)
-            if target < current_dt:
-                target += timedelta(days=1)
-            return (target - current_dt).total_seconds() / 60
+        # Map each province to its upcoming trips
+        prov_to_trips = defaultdict(list)
+        for t in upcoming_trips:
+            for p in t['ProvincesServed']:
+                prov_to_trips[p].append(t)
 
-        route_reports = []
-        for tdata in upcoming_trips:
-            provinces_served = tdata['ProvincesServed']
-            matched_backlog = df_transit[df_transit['Tinh'].isin(provinces_served)].copy()
-            if matched_backlog.empty:
-                continue
+        # Summary by Province (TOÀN BỘ CÁC TỈNH CÓ HÀNG TỒN)
+        if not df_transit.empty:
+            prov_summary = df_transit.groupby('Tinh').agg(
+                SoDon=('KhoGiao', 'count'),
+                TongKG=('KG', 'sum')
+            ).reset_index().sort_values('TongKG', ascending=False)
+        else:
+            prov_summary = pd.DataFrame(columns=['Tinh', 'SoDon', 'TongKG'])
 
-            # Group by Province only
-            prov_data = {}
-            for prov in sorted(list(provinces_served)):
-                p_orders = matched_backlog[matched_backlog['Tinh'] == prov]
-                if p_orders.empty:
-                    continue
-
-                prov_data[prov] = {
-                    'SoDon': int(p_orders['KhoGiao'].count()),
-                    'TongKG': float(p_orders['KG'].sum())
-                }
-
-            if prov_data:
-                total_route_orders = sum(p['SoDon'] for p in prov_data.values())
-                total_route_kg = sum(p['TongKG'] for p in prov_data.values())
-
-                route_reports.append({
-                    'MaTuyen': tdata['MaTuyen'],
-                    'HHMM': tdata['HHMM'],
-                    'Origin': tdata['Origin'],
-                    'TrongTai': tdata['TrongTai'],
-                    'TotalOrders': total_route_orders,
-                    'TotalKG': total_route_kg,
-                    'Provinces': prov_data,
-                    'MinsAway': get_mins_diff(tdata['HHMM'], now)
+        # Upcoming trips with matching backlog
+        seen_trips = set()
+        unique_upcoming = []
+        for t in upcoming_trips:
+            matched = df_transit[df_transit['Tinh'].isin(t['ProvincesServed'])]
+            if not matched.empty and t['MaChuyen'] not in seen_trips:
+                seen_trips.add(t['MaChuyen'])
+                unique_upcoming.append({
+                    'MaTuyen': t['MaTuyen'],
+                    'HHMM': t['HHMM'],
+                    'TrongTai': t.get('TrongTai', 0),
+                    'Orders': len(matched),
+                    'KG': matched['KG'].sum(),
+                    'Provinces': sorted(list(set(matched['Tinh'])))
                 })
-
-        # Sort chronologically by minutes until departure, then highest KG
-        route_reports.sort(key=lambda x: (x['MinsAway'], -x['TotalKG']))
-
-        # Chọn 3 tuyến xuất bến gần nhất (tránh chọn trùng lặp cùng 1 tỉnh/tập tỉnh để báo cáo gọn gàng, không bị rối)
-        selected_reports = []
-        seen_prov_sets = set()
-        for r in route_reports:
-            prov_key = tuple(sorted(list(r['Provinces'].keys())))
-            if prov_key in seen_prov_sets:
-                continue
-            selected_reports.append(r)
-            seen_prov_sets.add(prov_key)
-            if len(selected_reports) == 3:
-                break
-
-        if len(selected_reports) < 3:
-            for r in route_reports:
-                if r not in selected_reports:
-                    selected_reports.append(r)
-                    if len(selected_reports) == 3:
-                        break
-
-        route_reports = selected_reports
+        unique_upcoming.sort(key=lambda x: x['HHMM'])
 
         # Format Telegram Message as requested
         lines = []
-        lines.append(f"🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN ({window_hours} GIỜ TỚI)</b>")
+        lines.append(f"🚨 <b>CẢNH BÁO TỒN KHO & LỊCH TẢI TUYẾN ({window_hours} GIỜ TỚI)</b>")
         lines.append(f"⏰ Thời điểm quét: <b>{now_str}</b>")
         lines.append(f"⏳ Khung giờ xuất bến: <b>{curr_time_str} ➔ {end_time_str}</b>")
-        lines.append(f"📦 Tổng tồn Đài Tư: <b>{total_orders:,} đơn</b> · <b>{total_kg:,.1f} kg</b>")
+        ex_info = f" <i>(đã loại {self.last_excluded_count} đơn đã xuất kho)</i>" if getattr(self, 'last_excluded_count', 0) > 0 else ""
+        lines.append(f"📦 Tổng tồn Đài Tư: <b>{total_orders:,} đơn</b> · <b>{total_kg:,.1f} kg</b>{ex_info}")
         lines.append(f"🚚 Hàng cần đi các tỉnh: <b>{transit_count:,} đơn</b> · <b>{transit_kg:,.1f} kg</b>\n")
 
-        if not route_reports:
-            lines.append(f"ℹ️ <i>Trong {window_hours} giờ tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>")
+        if prov_summary.empty:
+            lines.append("🎉 <i>Hiện không có hàng tồn cần trung chuyển đi các tỉnh!</i>\n")
         else:
-            lines.append(f"🚛 <b>DANH SÁCH {len(route_reports)} TUYẾN XUẤT BẾN GẦN NHẤT:</b>\n")
-            # Liệt kê toàn bộ các tuyến, chỉ hiện tuyến xe và tỉnh tồn
-            for idx, r in enumerate(route_reports, 1):
-                tt_str = f"{r['TrongTai']} kg" if r['TrongTai'] else "Xe cố định"
-                lines.append(
-                    f"🚛 <b>{idx}. Tuyến <code>{r['MaTuyen']}</code> — Cung giờ: <b>{r['HHMM']}</b></b> (Tải xe: {tt_str})\n"
-                    f"   📊 <b>Tổng hàng lên xe: {r['TotalOrders']} đơn · ⚖️ {r['TotalKG']:,.1f} kg</b>"
-                )
-                for prov_name, pdata in r['Provinces'].items():
-                    lines.append(f"   • <b>Tỉnh {prov_name}:</b> {pdata['SoDon']} đơn - {pdata['TongKG']:,.1f} kg")
-                lines.append("")
+            lines.append(f"📍 <b>CHI TIẾT TOÀN BỘ CÁC TỈNH CÓ HÀNG TỒN ({len(prov_summary)} TỈNH):</b>")
+            for idx, r in enumerate(prov_summary.itertuples(), 1):
+                p = r.Tinh
+                sd = r.SoDon
+                kg = r.TongKG
+                trips = prov_to_trips.get(p, [])
+                if trips:
+                    t0 = trips[0]
+                    trip_info = f"🚛 <code>{t0['MaTuyen']}</code> (<b>{t0['HHMM']}</b>)"
+                else:
+                    trip_info = f"⏳ <i>Chưa có chuyến trong {window_hours}h</i>"
+                lines.append(f"{idx}. <b>{p}:</b> {sd} đơn · {kg:,.1f} kg ➔ {trip_info}")
+            lines.append("")
+
+        if unique_upcoming:
+            lines.append(f"🚛 <b>LỊCH CÁC TUYẾN XE XUẤT BẾN TRONG {window_hours} GIỜ TỚI (CÓ HÀNG ĐI ĐƯỢC):</b>")
+            for u in unique_upcoming:
+                tt = f"{u['TrongTai']:,} kg" if u['TrongTai'] else "cố định"
+                p_str = ', '.join(u['Provinces'])
+                lines.append(f"• <b>{u['HHMM']}</b> — <code>{u['MaTuyen']}</code> (Tải: {tt}): <b>{u['Orders']} đơn · {u['KG']:,.1f} kg</b> (Đi: {p_str})")
+            lines.append("")
+        else:
+            lines.append(f"ℹ️ <i>Trong {window_hours} giờ tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>\n")
 
         # Add Google Sheet detail link
         sheet_link = self.gg_sheet_url or "https://docs.google.com/spreadsheets/d/1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU/edit?gid=654306746#gid=654306746"
-        lines.append(f"📊 <b>Dữ liệu chi tiết {transit_count:,} đơn tồn (Google Sheet Tab TonUpdate1h):</b>\n👉 <a href=\"{sheet_link}\">Bấm vào đây để xem chi tiết từng đơn</a>\n")
-
+        lines.append(f"📊 <b>Dữ liệu chi tiết {transit_count:,} đơn tồn (Google Sheet Tab TonUpdate1h):</b>")
+        lines.append(f'👉 <a href="{sheet_link}">Bấm vào đây để xem chi tiết từng đơn</a>\n')
         lines.append("👉 <i>Vui lòng ưu tiên gom và xếp hàng lên các chuyến xe có giờ xuất bến sớm nhất!</i>")
         msg = "\n".join(lines)
 
@@ -1000,7 +1016,7 @@ class B2BTonAdvisor:
             fallback_msg = (
                 f"👋 Chào <b>{sender_name}</b>!\n\n"
                 f"Tôi đã nhận được tin nhắn: <i>\"{text}\"</i>\n\n"
-                f"👉 Để lấy báo cáo hàng tồn & 3 tuyến xe gần nhất trong 4 giờ tới, bạn hãy gửi lệnh:\n"
+                f"👉 Để lấy báo cáo chi tiết toàn bộ các tỉnh tồn & lịch xuất bến trong 4 giờ tới, bạn hãy gửi lệnh:\n"
                 f"• <code>/ton</code> hoặc <code>/check</code>\n\n"
                 f"ℹ️ Gõ <code>/help</code> để xem hướng dẫn đầy đủ các lệnh."
             )
