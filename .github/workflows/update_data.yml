@@ -25,14 +25,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install pandas openpyxl google-api-python-client google-auth-httplib2 google-auth-oauthlib requests
 
-      - name: Create token.json from secret
-        env:
-          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
-        run: |
-          if [ -n "$GOOGLE_TOKEN" ]; then
-            echo "$GOOGLE_TOKEN" > token.json
-          fi
-
       - name: Run daily_update.py
         env:
           GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
@@ -42,13 +34,28 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add "Data B2B Master.xlsx"
+          git add "Data B2B Master.xlsx" advisor_config.json
           if ! git diff --staged --quiet; then
             git commit -m "Auto-update data from Google Sheets [skip ci]"
             git pull --rebase origin main || true
             git push origin HEAD:main || true
           else
             echo "No changes to commit"
+          fi
+
+      - name: Reboot Streamlit App via API
+        env:
+          STREAMLIT_API_TOKEN: ${{ secrets.STREAMLIT_API_TOKEN }}
+          STREAMLIT_APP_ID: ${{ secrets.STREAMLIT_APP_ID }}
+        run: |
+          if [ -n "$STREAMLIT_API_TOKEN" ] && [ -n "$STREAMLIT_APP_ID" ]; then
+            echo "Rebooting Streamlit App after data update..."
+            curl -X POST \
+              "https://api.streamlit.io/v1/apps/$STREAMLIT_APP_ID/reboot" \
+              -H "Authorization: Bearer $STREAMLIT_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              --silent --show-error || true
+            echo "Reboot request sent."
           fi
 
       - name: Send Daily Telegram Report
@@ -60,6 +67,7 @@ jobs:
 
       - name: Ping Streamlit Dashboard & Render Bot (Keep Awake)
         run: |
+          curl -sL https://b2b-dashboard-dsgkivhypxmlqtjujsic2d.streamlit.app > /dev/null || true
           curl -sL https://b2b-dashboard-hydt.streamlit.app > /dev/null || true
           curl -sL https://b2b-ton-bot.onrender.com > /dev/null || true
           echo "Streamlit dashboard and Render Bot pinged."
