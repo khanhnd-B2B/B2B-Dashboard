@@ -343,20 +343,22 @@ with tab1:
     df_daitu = df_filtered[df_filtered['KhoNhap'].str.contains('Đài Tư', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
     df_hungyen = df_filtered[df_filtered['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
 
-    st.markdown("<h3 style='color: #004b8b; text-decoration: underline;'>A. Overview</h3>", unsafe_allow_html=True)
-    
-    if 'NgayNhap' in df_filtered.columns and not df_filtered.empty:
-        df_ltc = df_filtered[df_filtered['ThoiGianLayThanhCong'].notna()] if 'ThoiGianLayThanhCong' in df_filtered.columns else df_filtered
-        
-        ltc_counts = df_ltc.groupby('Period_Str')['MaDonGoc'].nunique() if 'MaDonGoc' in df_ltc.columns else df_ltc.groupby('Period_Str').size()
-        kg_sums = df_filtered.groupby('Period_Str')['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_filtered.columns else pd.Series(dtype=float)
-        
-        if 'NguonNhap' in df_filtered.columns:
-            df_tu_lay = df_filtered[df_filtered['NguonNhap'].str.contains('Tự', case=False, na=False)]
+    def build_overview_table(df_source, f='D', max_p=30):
+        if df_source is None or df_source.empty or 'Period_Str' not in df_source.columns or 'Period' not in df_source.columns:
+            return None
+        df_src = df_source.copy()
+        if 'KhoiLuongKG' in df_src.columns:
+            df_src['KhoiLuongKG'] = pd.to_numeric(df_src['KhoiLuongKG'].astype(str).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
+
+        don_counts = df_src.groupby('Period_Str')['MaDonGoc'].nunique() if 'MaDonGoc' in df_src.columns else df_src.groupby('Period_Str').size()
+        kg_sums = df_src.groupby('Period_Str')['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_src.columns else pd.Series(dtype=float)
+
+        if 'NguonNhap' in df_src.columns:
+            df_tu_lay = df_src[df_src['NguonNhap'].str.contains('Tự', case=False, na=False)]
             tu_lay_counts = df_tu_lay.groupby('Period_Str')['MaDonGoc'].nunique() if 'MaDonGoc' in df_tu_lay.columns else df_tu_lay.groupby('Period_Str').size()
             tu_lay_kg = df_tu_lay.groupby('Period_Str')['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_tu_lay.columns else pd.Series(dtype=float)
-            
-            df_nhap_ve = df_filtered[df_filtered['NguonNhap'].str.contains('Nhập', case=False, na=False)]
+
+            df_nhap_ve = df_src[df_src['NguonNhap'].str.contains('Nhập', case=False, na=False)]
             nhap_ve_counts = df_nhap_ve.groupby('Period_Str')['MaDonGoc'].nunique() if 'MaDonGoc' in df_nhap_ve.columns else df_nhap_ve.groupby('Period_Str').size()
             nhap_ve_kg = df_nhap_ve.groupby('Period_Str')['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_nhap_ve.columns else pd.Series(dtype=float)
         else:
@@ -365,30 +367,36 @@ with tab1:
             tu_lay_kg = pd.Series(dtype=float)
             nhap_ve_kg = pd.Series(dtype=float)
 
-        overview_group = pd.DataFrame({
-            'Tổng đơn': ltc_counts,
+        overview_df = pd.DataFrame({
+            'Tổng đơn': don_counts,
             'Tổng khối lượng (KG)': kg_sums,
             'Số đơn tự lấy': tu_lay_counts,
             'Số KG tự lấy': tu_lay_kg,
             'Số đơn nhập về': nhap_ve_counts,
             'Số KG nhập về': nhap_ve_kg
         }).fillna(0)
-        
-        period_map = df_filtered.set_index('Period_Str')['Period'].to_dict()
-        overview_group['Period'] = overview_group.index.map(period_map)
-        overview_group = overview_group.sort_values('Period', ascending=False).drop(columns=['Period']).head(30 if freq == 'D' else n_periods).T
-        overview_group.index.name = 'Thời gian'
-        
-        for col in overview_group.columns:
-            overview_group[col] = [
-                f"{overview_group.loc['Tổng đơn', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Tổng khối lượng (KG)', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Số đơn tự lấy', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Số KG tự lấy', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Số đơn nhập về', col]:,.0f}".replace(',', '.'),
-                f"{overview_group.loc['Số KG nhập về', col]:,.0f}".replace(',', '.')
+
+        period_map = df_src.drop_duplicates('Period_Str').set_index('Period_Str')['Period'].to_dict()
+        overview_df['Period'] = overview_df.index.map(period_map)
+        limit_p = 30 if f == 'D' else max_p
+        overview_df = overview_df.sort_values('Period', ascending=False).drop(columns=['Period']).head(limit_p).T
+        overview_df.index.name = 'Thời gian'
+
+        for col in overview_df.columns:
+            overview_df[col] = [
+                f"{overview_df.loc['Tổng đơn', col]:,.0f}".replace(',', '.'),
+                f"{overview_df.loc['Tổng khối lượng (KG)', col]:,.0f}".replace(',', '.'),
+                f"{overview_df.loc['Số đơn tự lấy', col]:,.0f}".replace(',', '.'),
+                f"{overview_df.loc['Số KG tự lấy', col]:,.0f}".replace(',', '.'),
+                f"{overview_df.loc['Số đơn nhập về', col]:,.0f}".replace(',', '.'),
+                f"{overview_df.loc['Số KG nhập về', col]:,.0f}".replace(',', '.')
             ]
-            
+        return overview_df
+
+    st.markdown("<h3 style='color: #004b8b; text-decoration: underline;'>A. Overview</h3>", unsafe_allow_html=True)
+    
+    overview_group = build_overview_table(df_filtered, freq, n_periods)
+    if overview_group is not None and not overview_group.empty:
         st.dataframe(overview_group, use_container_width=True)
     else:
         st.info("Không có dữ liệu tổng quan.")
@@ -470,16 +478,40 @@ with tab1:
             c2.metric("Tự lấy", f"{tu_lay_kg:,.0f} kg")
             c3.metric("Nhập từ kho khác", f"{khac_kg:,.0f} kg")
             
+        # Bảng chi tiết sản lượng kho theo thời gian (giống bảng A. Overview)
+        wh_overview_table = build_overview_table(df_wh_full, f=freq, max_p=n_periods)
+        if wh_overview_table is not None and not wh_overview_table.empty:
+            st.markdown(f"**Bảng chi tiết sản lượng kho {wh_name} theo thời gian**")
+            st.dataframe(wh_overview_table, use_container_width=True)
+
+        # Biểu đồ dạng đường nguồn nhập của kho
         if 'NguonNhap' in df_wh_full.columns and 'Period_Str' in df_wh_full.columns:
             df_wh_full['Ngày'] = df_wh_full['Period_Str']
             grouped_wh_nguon = df_wh_full.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+            
+            # Thêm đường Tổng nhập để quan sát cả tổng lượng và các nguồn nhập
+            grouped_wh_total = df_wh_full.groupby(['Period', 'Ngày']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+            grouped_wh_total['NguonNhap'] = 'Tổng nhập'
+            grouped_wh_chart = pd.concat([grouped_wh_total, grouped_wh_nguon], ignore_index=True)
+            
             if freq == 'D':
-                recent_days = sorted(grouped_wh_nguon['Period'].unique())[-30:]
-                grouped_wh_nguon = grouped_wh_nguon[grouped_wh_nguon['Period'].isin(recent_days)]
-            if not grouped_wh_nguon.empty:
+                recent_days = sorted(grouped_wh_chart['Period'].unique())[-30:]
+                grouped_wh_chart = grouped_wh_chart[grouped_wh_chart['Period'].isin(recent_days)]
+            if not grouped_wh_chart.empty:
                 y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
-                fig_wh_nguon = px.bar(grouped_wh_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title="Nguồn nhập", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
-                fig_wh_nguon.update_xaxes(categoryorder='array', categoryarray=grouped_wh_nguon['Ngày'].unique())
+                y_label = 'Số đơn' if metric_view == 'Số đơn' else 'Khối lượng (kg)'
+                fig_wh_nguon = px.line(
+                    grouped_wh_chart, 
+                    x='Ngày', 
+                    y=y_col, 
+                    color='NguonNhap', 
+                    markers=True, 
+                    title=f"Biểu đồ nguồn nhập {wh_name}", 
+                    labels={'NguonNhap': 'Nguồn nhập', y_col: y_label}, 
+                    custom_data=['Số_đơn', 'Tổng_KG']
+                )
+                sorted_days = grouped_wh_chart.sort_values('Period')['Ngày'].unique()
+                fig_wh_nguon.update_xaxes(categoryorder='array', categoryarray=sorted_days)
                 fig_wh_nguon.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                 st.plotly_chart(fig_wh_nguon, use_container_width=True)
         
