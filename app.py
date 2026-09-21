@@ -76,50 +76,121 @@ if not require_login():
     st.stop()
 
 # ==================== LOAD DATA ====================
+def _load_from_google_sheets_api():
+    """Đọc dữ liệu trực tiếp từ Google Sheets API (luôn có dữ liệu mới nhất, không phụ thuộc Git commit)."""
+    try:
+        import json, base64
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        from googleapiclient.discovery import build
+
+        SPREADSHEET_ID = '1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU'
+        SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+
+        creds = None
+        # Nguồn 1: advisor_config.json (google_token_b64)
+        if os.path.exists('advisor_config.json'):
+            try:
+                with open('advisor_config.json', 'r', encoding='utf-8') as f:
+                    cfg = json.load(f)
+                b64_token = cfg.get('google_token_b64')
+                if b64_token:
+                    tdata = json.loads(base64.b64decode(b64_token).decode('utf-8'))
+                    creds = Credentials.from_authorized_user_info(tdata, SCOPES)
+            except Exception:
+                pass
+
+        # Nguồn 2: Streamlit secrets (google_token_b64)
+        if not creds:
+            try:
+                b64_token = st.secrets.get("GOOGLE_TOKEN_B64", "")
+                if b64_token:
+                    tdata = json.loads(base64.b64decode(b64_token).decode('utf-8'))
+                    creds = Credentials.from_authorized_user_info(tdata, SCOPES)
+            except Exception:
+                pass
+
+        if not creds:
+            return None
+
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            # Lưu token mới vào advisor_config.json
+            try:
+                with open('advisor_config.json', 'r', encoding='utf-8') as f:
+                    cfg = json.load(f)
+                cfg['google_token_b64'] = base64.b64encode(creds.to_json().encode('utf-8')).decode('utf-8')
+                with open('advisor_config.json', 'w', encoding='utf-8') as f:
+                    json.dump(cfg, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+        service = build('sheets', 'v4', credentials=creds)
+        result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID, range='DataSorting'
+        ).execute()
+        values = result.get('values', [])
+        if values and len(values) >= 2:
+            df = pd.DataFrame(values[1:], columns=values[0])
+            return df
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ Google Sheets API không khả dụng: {e}")
+    return None
+
 @st.cache_data(ttl=1800)
 def load_data():
     df = pd.DataFrame()
     source_used = ""
-    
-    # ✅ ƯU TIÊN 1: Đọc từ file Excel local (được tự động cập nhật hàng ngày bởi GitHub Actions)
-    local_file = 'Data B2B Master.xlsx'
-    if os.path.exists(local_file):
-        try:
-            df_local = pd.read_excel(local_file)
-            if len(df_local.columns) > 0 and str(df_local.columns[0]).startswith('Unnamed:'):
-                for i in range(min(5, len(df_local))):
-                    if 'NgayNhap' in df_local.iloc[i].values:
-                        df_local.columns = df_local.iloc[i]
-                        df_local = df_local[i+1:].reset_index(drop=True)
-                        break
-            if not df_local.empty:
-                df = df_local
-                source_used = local_file
-        except Exception:
-            pass
 
-    # ✅ ƯU TIÊN 2 (dự phòng): Đọc từ Google Sheets URL nếu Excel không tồn tại
+    # ✅ ƯU TIÊN 1: Đọc trực tiếp từ Google Sheets API (luôn mới nhất, không cần reboot)
+    try:
+        df_api = _load_from_google_sheets_api()
+        if df_api is not None and not df_api.empty:
+            df = df_api
+            source_used = "Google Sheets API (Live)"
+    except Exception:
+        pass
+
+    # ✅ ƯU TIÊN 2: Đọc từ file Excel local (được GitHub Actions cập nhật)
+    if df.empty:
+        local_file = 'Data B2B Master.xlsx'
+        if os.path.exists(local_file):
+            try:
+                df_local = pd.read_excel(local_file)
+                if len(df_local.columns) > 0 and str(df_local.columns[0]).startswith('Unnamed:'):
+                    for i in range(min(5, len(df_local))):
+                        if 'NgayNhap' in df_local.iloc[i].values:
+                            df_local.columns = df_local.iloc[i]
+                            df_local = df_local[i+1:].reset_index(drop=True)
+                            break
+                if not df_local.empty:
+                    df = df_local
+                    source_used = local_file
+            except Exception:
+                pass
+
+    # ✅ ƯU TIÊN 3 (dự phòng): Đọc từ Google Sheets URL (CSV export)
     if df.empty:
         url = st.secrets.get("SHEET_URL", "")
         try:
             if url:
                 df = pd.read_csv(url)
-                source_used = "Google Sheets"
+                source_used = "Google Sheets (CSV)"
         except Exception:
             pass
 
     if df.empty:
         return pd.DataFrame(), "Không tìm thấy dữ liệu"
-            
+
     if not df.empty:
         if 'MaDonGoc' in df.columns:
             df = df.drop_duplicates(subset=['MaDonGoc'], keep='last')
-            
+
         dt_columns = ['ThoiGianNhap', 'InsideThoiGianGanNhat', 'NgayNhap', 'ThoiGianXuatKien']
         for col in dt_columns:
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce').dt.tz_localize(None)
-                
+
         if 'KhoiLuongKG' in df.columns:
             df['KhoiLuongKG'] = pd.to_numeric(df['KhoiLuongKG'].astype(str).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
         if 'Client_ID' in df.columns:
