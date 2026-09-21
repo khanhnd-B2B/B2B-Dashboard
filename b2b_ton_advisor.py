@@ -58,7 +58,7 @@ PREFIX_TO_PROVINCE = {
     'TQG': 'Tuyên Quang', 'TQ': 'Tuyên Quang',
     'HAG': 'Hà Giang', 'HG': 'Hà Giang',
     'DNA': 'Đà Nẵng', 'ĐN': 'Đà Nẵng', 'DNG': 'Đà Nẵng',
-    'SGN': 'Hồ Chí Minh', 'HCM': 'Hồ Chí Minh',
+    'SGN': 'Hồ Chí Minh', 'HCM': 'Hồ Chí Minh', 'SG': 'Hồ Chí Minh',
     'BDU': 'Bình Dương', 'BD': 'Bình Dương',
     'DNI': 'Đồng Nai', 'ĐNAI': 'Đồng Nai',
     'LAN': 'Long An', 'LA': 'Long An',
@@ -71,18 +71,22 @@ PREFIX_TO_PROVINCE = {
     'QNG': 'Quảng Ngãi', 'QNGA': 'Quảng Ngãi',
     'BDI': 'Bình Định', 'BĐ': 'Bình Định',
     'PYE': 'Phú Yên', 'PY': 'Phú Yên',
-    'KHA': 'Khánh Hòa', 'KH': 'Khánh Hòa',
+    'KHA': 'Khánh Hòa', 'KH': 'Khánh Hòa', 'KHO': 'Khánh Hòa',
     'GLI': 'Gia Lai', 'GL': 'Gia Lai',
-    'DKL': 'Đắk Lắk', 'DLK': 'Đắk Lắk',
+    'DKL': 'Đắk Lắk', 'DLK': 'Đắk Lắk', 'DLA': 'Đắk Lắk',
     'DKN': 'Đắk Nông', 'DNO': 'Đắk Nông',
     'LDG': 'Lâm Đồng', 'LĐ': 'Lâm Đồng',
-    'CTO': 'Cần Thơ', 'CT': 'Cần Thơ',
+    'CTO': 'Cần Thơ', 'CT': 'Cần Thơ', 'CTH': 'Cần Thơ',
     'KGG': 'Kiên Giang', 'KG': 'Kiên Giang', 'KGI': 'Kiên Giang',
     'AGG': 'An Giang', 'AG': 'An Giang',
-    'CMU': 'Cà Mau', 'CM': 'Cà Mau',
+    'CMU': 'Cà Mau', 'CM': 'Cà Mau', 'CMA': 'Cà Mau',
     'BKA': 'Bắc Kạn', 'DBI': 'Điện Biên',
     'STR': 'Sóc Trăng', 'TNI': 'Tây Ninh',
-    'KTU': 'Kon Tum', 'CBA': 'Cao Bằng',
+    'KTU': 'Kon Tum', 'KTM': 'Kon Tum', 'CBA': 'Cao Bằng',
+    'HGI': 'Hậu Giang', 'HGG': 'Hậu Giang',
+    'BLI': 'Bạc Liêu', 'BLU': 'Bạc Liêu',
+    'BTE': 'Bến Tre', 'TGI': 'Tiền Giang', 'VLG': 'Vĩnh Long',
+    'LCH': 'Lai Châu', 'HTI': 'Hà Tĩnh', 'TNB': 'Cần Thơ'
 }
 
 PROVINCES_LIST = [
@@ -95,7 +99,9 @@ PROVINCES_LIST = [
     'Huế', 'Quảng Nam', 'Quảng Ngãi', 'Bình Định', 'Phú Yên', 'Khánh Hòa',
     'Khánh Hoà', 'Gia Lai', 'Đắk Lắk', 'Đắk Nông', 'Lâm Đồng', 'Cần Thơ',
     'Kiên Giang', 'An Giang', 'Cà Mau', 'Hà Nội', 'Hà Tĩnh', 'Bà Rịa - Vũng Tàu',
-    'BRVT', 'Đồng Tháp', 'Trà Vinh', 'Ninh Thuận', 'Tây Ninh'
+    'BRVT', 'Đồng Tháp', 'Trà Vinh', 'Ninh Thuận', 'Tây Ninh', 'Kon Tum',
+    'Hậu Giang', 'Bạc Liêu', 'Bến Tre', 'Tiền Giang', 'Vĩnh Long', 'Sóc Trăng',
+    'Bắc Kạn', 'Cao Bằng', 'Điện Biên', 'Lai Châu'
 ]
 
 def extract_province(name):
@@ -108,9 +114,11 @@ def extract_province(name):
 
     parts = name.split('-')
     if len(parts) >= 2:
-        last_part = parts[-1].strip()
+        last_part = parts[-1].strip().upper()
+        if last_part in PREFIX_TO_PROVINCE:
+            return PREFIX_TO_PROVINCE[last_part]
         for p in PROVINCES_LIST:
-            if p.lower() == last_part.lower():
+            if p.lower() == parts[-1].strip().lower():
                 if 'thanh ho' in p.lower(): return 'Thanh Hóa'
                 if 'hoà bình' in p.lower() or 'hòa bình' in p.lower(): return 'Hòa Bình'
                 if 'khánh ho' in p.lower(): return 'Khánh Hòa'
@@ -127,8 +135,19 @@ def extract_province(name):
             if p == 'HCM': return 'Hồ Chí Minh'
             return p
 
-    if any(k in name.lower() for k in ['hà nội', 'long biên', 'thanh xuân', 'hoài đức', 'cầu giấy', 'ba đình', 'đông anh', 'mê linh', 'sóc sơn', 'tây hồ', 'hoàn kiếm', 'đống đa', 'hai bà trưng', 'thanh trì', 'hoàng mai', 'hà đông', 'nam từ liêm', 'bắc từ liêm']):
+    hanoi_keywords = [
+        'hà nội', 'long biên', 'thanh xuân', 'hoài đức', 'cầu giấy', 'ba đình',
+        'đông anh', 'mê linh', 'sóc sơn', 'tây hồ', 'hoàn kiếm', 'đống đa',
+        'hai bà trưng', 'thanh trì', 'hoàng mai', 'hà đông', 'nam từ liêm',
+        'bắc từ liêm', 'mỹ đức', 'phú xuyên', 'thạch thất', 'nội bài',
+        'thường tín', 'chương mỹ', 'quốc oai', 'phúc thọ', 'đan phượng',
+        'ứng hòa', 'ba vì', 'sơn tây', 'gia lâm'
+    ]
+    if any(k in name.lower() for k in hanoi_keywords):
         return 'Hà Nội'
+
+    if 'tnb' in name.lower():
+        return 'Cần Thơ'
 
     return 'Khác'
 
@@ -142,6 +161,15 @@ ORIGIN_EXCLUDED_STOPS = {
     'kho trung chuyển hà nội 02'
 }
 
+BOT_STATUS = {
+    'start_time': 'Đang khởi động',
+    'last_poll': 'Chưa chạy',
+    'last_action': 'Chưa có lệnh',
+    'polling_state': 'Đang kết nối',
+    'last_error': 'Không có',
+    'total_messages': 0
+}
+
 def start_health_server(port=8080):
     from http.server import HTTPServer, BaseHTTPRequestHandler
     import threading
@@ -151,7 +179,39 @@ def start_health_server(port=8080):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.end_headers()
-            self.wfile.write(b"<h1>B2B Ton Advisor Bot is Running Online 24/7!</h1><p>Status: OK</p>")
+            now_str = get_vietnam_now().strftime('%H:%M:%S %d/%m/%Y')
+            html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>B2B Ton Advisor Bot Status</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 25px; line-height: 1.6; }}
+        .card {{ background: #1e293b; border-radius: 12px; padding: 24px; max-width: 650px; margin: 0 auto; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 1px solid #334155; }}
+        h1 {{ color: #38bdf8; font-size: 22px; margin-top: 0; display: flex; align-items: center; gap: 10px; }}
+        .badge {{ background: #10b981; color: white; padding: 3px 10px; border-radius: 20px; font-size: 13px; font-weight: bold; }}
+        .row {{ display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #334155; }}
+        .label {{ color: #94a3b8; font-weight: 500; }}
+        .val {{ color: #f1f5f9; font-weight: 600; font-family: monospace; }}
+        .footer {{ margin-top: 20px; font-size: 13px; color: #64748b; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🤖 B2B Ton Advisor Bot <span class="badge">ONLINE 24/7</span></h1>
+        <p style="color: #94a3b8; margin-top: -5px; font-size: 14px;">Hệ thống cảnh báo tồn kho và điều phối tải tuyến GHN</p>
+        <div class="row"><span class="label">⏰ Giờ hệ thống (VN):</span><span class="val">{now_str}</span></div>
+        <div class="row"><span class="label">🚀 Khởi động lúc:</span><span class="val">{BOT_STATUS.get('start_time')}</span></div>
+        <div class="row"><span class="label">📡 Trạng thái Telegram Polling:</span><span class="val" style="color: #38bdf8;">{BOT_STATUS.get('polling_state')}</span></div>
+        <div class="row"><span class="label">⏱️ Lần đọc Telegram gần nhất:</span><span class="val">{BOT_STATUS.get('last_poll')}</span></div>
+        <div class="row"><span class="label">📨 Tin nhắn đã xử lý:</span><span class="val">{BOT_STATUS.get('total_messages')}</span></div>
+        <div class="row"><span class="label">⚡ Hoạt động gần nhất:</span><span class="val">{BOT_STATUS.get('last_action')}</span></div>
+        <div class="row"><span class="label">⚠️ Ghi nhận lỗi gần nhất:</span><span class="val" style="color: {'#ef4444' if BOT_STATUS.get('last_error') != 'Không có' else '#10b981'};">{BOT_STATUS.get('last_error')}</span></div>
+        <div class="footer">Uptime check probe & health server running on port {port}</div>
+    </div>
+</body>
+</html>"""
+            self.wfile.write(html.encode('utf-8'))
 
         def do_HEAD(self):
             self.send_response(200)
@@ -597,153 +657,167 @@ class B2BTonAdvisor:
         print(f"[{now_str}] Đang quét đơn tồn ({curr_time_str} ➔ {end_time_str}, khung {window_hours}h)...")
 
         try:
-            df, source_desc = self.fetch_live_data()
-        except Exception as e:
+            try:
+                df, source_desc = self.fetch_live_data()
+            except Exception as e:
+                err_msg = (
+                    f"⚠️ <b>LỖI KẾT NỐI DỮ LIỆU TỒN:</b>\n"
+                    f"Chi tiết: <code>{str(e)}</code>\n\n"
+                    f"👉 <i>Vui lòng kiểm tra lại kết nối mạng hoặc file cấu hình!</i>"
+                )
+                print(err_msg)
+                BOT_STATUS['last_error'] = f"Lỗi nạp dữ liệu: {str(e)}"
+                if send_tele:
+                    self.send_telegram(err_msg, chat_id=chat_dst, thread_id=thread_dst)
+                return None
+
+            # Extract KG column (support both comma and dot decimal separators)
+            for col in ['KL_TinhCuoc_Kg', 'CanNangThucTe_Kg', 'CanNangQuyDoi_Kg']:
+                if col in df.columns:
+                    df['KG'] = pd.to_numeric(df[col].astype(str).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
+                    break
+            if 'KG' not in df.columns:
+                df['KG'] = 0.0
+
+            # Filter transit orders where KhoHienTai is strictly Dai Tu
+            if 'KhoHienTai' in df.columns:
+                df_daitu = df[df['KhoHienTai'].str.contains('Đài Tư|Dai Tu', case=False, na=False)].copy()
+            else:
+                df_daitu = df.copy()
+
+            total_orders = len(df_daitu)
+            total_kg = df_daitu['KG'].sum()
+
+            if 'KhoGiao' in df_daitu.columns and 'KhoHienTai' in df_daitu.columns:
+                df_transit = df_daitu[df_daitu['KhoGiao'] != df_daitu['KhoHienTai']].copy()
+            else:
+                df_transit = df_daitu.copy()
+
+            transit_count = len(df_transit)
+            transit_kg = df_transit['KG'].sum()
+
+            # Extract Province for each order
+            df_transit['Tinh'] = df_transit['KhoGiao'].apply(extract_province)
+
+            # Get trips departing in the next window_hours (mặc định 4 giờ tới)
+            upcoming_trips = self.get_upcoming_trips(now, window_hours=window_hours)
+            print(f"Tìm thấy {len(upcoming_trips)} chuyến xe xuất bến trong khung giờ {curr_time_str} - {end_time_str} ({window_hours} giờ tới).")
+
+            def get_mins_diff(hhmm, current_dt):
+                h, m = map(int, hhmm.split(':'))
+                target = current_dt.replace(hour=h, minute=m, second=0, microsecond=0)
+                if target < current_dt:
+                    target += timedelta(days=1)
+                return (target - current_dt).total_seconds() / 60
+
+            route_reports = []
+            for tdata in upcoming_trips:
+                provinces_served = tdata['ProvincesServed']
+                matched_backlog = df_transit[df_transit['Tinh'].isin(provinces_served)].copy()
+                if matched_backlog.empty:
+                    continue
+
+                # Group by Province only
+                prov_data = {}
+                for prov in sorted(list(provinces_served)):
+                    p_orders = matched_backlog[matched_backlog['Tinh'] == prov]
+                    if p_orders.empty:
+                        continue
+
+                    prov_data[prov] = {
+                        'SoDon': int(p_orders['KhoGiao'].count()),
+                        'TongKG': float(p_orders['KG'].sum())
+                    }
+
+                if prov_data:
+                    total_route_orders = sum(p['SoDon'] for p in prov_data.values())
+                    total_route_kg = sum(p['TongKG'] for p in prov_data.values())
+
+                    route_reports.append({
+                        'MaTuyen': tdata['MaTuyen'],
+                        'HHMM': tdata['HHMM'],
+                        'Origin': tdata['Origin'],
+                        'TrongTai': tdata['TrongTai'],
+                        'TotalOrders': total_route_orders,
+                        'TotalKG': total_route_kg,
+                        'Provinces': prov_data,
+                        'MinsAway': get_mins_diff(tdata['HHMM'], now)
+                    })
+
+            # Sort chronologically by minutes until departure, then highest KG
+            route_reports.sort(key=lambda x: (x['MinsAway'], -x['TotalKG']))
+
+            # Chọn 3 tuyến xuất bến gần nhất (tránh chọn trùng lặp cùng 1 tỉnh/tập tỉnh để báo cáo gọn gàng, không bị rối)
+            selected_reports = []
+            seen_prov_sets = set()
+            for r in route_reports:
+                prov_key = tuple(sorted(list(r['Provinces'].keys())))
+                if prov_key in seen_prov_sets:
+                    continue
+                selected_reports.append(r)
+                seen_prov_sets.add(prov_key)
+                if len(selected_reports) == 3:
+                    break
+
+            if len(selected_reports) < 3:
+                for r in route_reports:
+                    if r not in selected_reports:
+                        selected_reports.append(r)
+                        if len(selected_reports) == 3:
+                            break
+
+            route_reports = selected_reports
+
+            # Format Telegram Message as requested
+            lines = []
+            lines.append(f"🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN ({window_hours} GIỜ TỚI)</b>")
+            lines.append(f"⏰ Thời điểm quét: <b>{now_str}</b>")
+            lines.append(f"⏳ Khung giờ xuất bến: <b>{curr_time_str} ➔ {end_time_str}</b>")
+            lines.append(f"📦 Tổng tồn Đài Tư: <b>{total_orders:,} đơn</b> · <b>{total_kg:,.1f} kg</b>")
+            lines.append(f"🚚 Hàng cần đi các tỉnh: <b>{transit_count:,} đơn</b> · <b>{transit_kg:,.1f} kg</b>\n")
+
+            if not route_reports:
+                lines.append(f"ℹ️ <i>Trong {window_hours} giờ tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>")
+            else:
+                lines.append(f"🚛 <b>DANH SÁCH {len(route_reports)} TUYẾN XUẤT BẾN GẦN NHẤT:</b>\n")
+                for idx, r in enumerate(route_reports, 1):
+                    tt_str = f"{r['TrongTai']} kg" if r['TrongTai'] else "Xe cố định"
+                    lines.append(
+                        f"🚛 <b>{idx}. Tuyến <code>{r['MaTuyen']}</code> — Cung giờ: <b>{r['HHMM']}</b></b> (Tải xe: {tt_str})\n"
+                        f"   📊 <b>Tổng hàng lên xe: {r['TotalOrders']} đơn · ⚖️ {r['TotalKG']:,.1f} kg</b>"
+                    )
+                    for prov_name, pdata in r['Provinces'].items():
+                        lines.append(f"   • <b>Tỉnh {prov_name}:</b> {pdata['SoDon']} đơn - {pdata['TongKG']:,.1f} kg")
+                    lines.append("")
+
+            # Add Google Sheet detail link
+            sheet_link = self.gg_sheet_url or "https://docs.google.com/spreadsheets/d/1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU/edit?gid=654306746#gid=654306746"
+            lines.append(f"📊 <b>Dữ liệu chi tiết {transit_count:,} đơn tồn (Google Sheet Tab TonUpdate1h):</b>\n👉 <a href=\"{sheet_link}\">Bấm vào đây để xem chi tiết từng đơn</a>\n")
+
+            lines.append("👉 <i>Vui lòng ưu tiên gom và xếp hàng lên các chuyến xe có giờ xuất bến sớm nhất!</i>")
+            msg = "\n".join(lines)
+
+            print("\n" + "=" * 70)
+            print(msg)
+            print("=" * 70 + "\n")
+
+            BOT_STATUS['last_action'] = f"Gửi báo cáo lúc {now_str}"
+
+            if send_tele:
+                self.send_telegram(msg, chat_id=chat_dst, thread_id=thread_dst)
+
+            return msg
+        except Exception as e_proc:
             err_msg = (
-                f"⚠️ <b>LỖI KẾT NỐI DỮ LIỆU TỒN:</b>\n"
-                f"Chi tiết: <code>{str(e)}</code>\n\n"
-                f"👉 <i>Vui lòng kiểm tra lại kết nối mạng hoặc file cấu hình!</i>"
+                f"⚠️ <b>LỖI XỬ LÝ DỮ LIỆU TỒN:</b>\n"
+                f"Chi tiết lỗi: <code>{str(e_proc)}</code>\n\n"
+                f"👉 <i>Vui lòng thử lại sau ít phút hoặc kiểm tra tab TonUpdate1h!</i>"
             )
-            print(err_msg)
+            print(f"Lỗi process_and_report: {e_proc}")
+            BOT_STATUS['last_error'] = f"Lỗi xử lý tồn: {str(e_proc)}"
             if send_tele:
                 self.send_telegram(err_msg, chat_id=chat_dst, thread_id=thread_dst)
             return None
-
-        # Extract KG column (support both comma and dot decimal separators)
-        for col in ['KL_TinhCuoc_Kg', 'CanNangThucTe_Kg', 'CanNangQuyDoi_Kg']:
-            if col in df.columns:
-                df['KG'] = pd.to_numeric(df[col].astype(str).str.replace(',', '.', regex=False), errors='coerce').fillna(0)
-                break
-        if 'KG' not in df.columns:
-            df['KG'] = 0.0
-
-        # Filter transit orders where KhoHienTai is strictly Dai Tu
-        if 'KhoHienTai' in df.columns:
-            df_daitu = df[df['KhoHienTai'].str.contains('Đài Tư|Dai Tu', case=False, na=False)].copy()
-        else:
-            df_daitu = df.copy()
-
-        total_orders = len(df_daitu)
-        total_kg = df_daitu['KG'].sum()
-
-        if 'KhoGiao' in df_daitu.columns and 'KhoHienTai' in df_daitu.columns:
-            df_transit = df_daitu[df_daitu['KhoGiao'] != df_daitu['KhoHienTai']].copy()
-        else:
-            df_transit = df_daitu.copy()
-
-        transit_count = len(df_transit)
-        transit_kg = df_transit['KG'].sum()
-
-        # Extract Province for each order
-        df_transit['Tinh'] = df_transit['KhoGiao'].apply(extract_province)
-
-        # Get trips departing in the next window_hours (mặc định 4 giờ tới)
-        upcoming_trips = self.get_upcoming_trips(now, window_hours=window_hours)
-        print(f"Tìm thấy {len(upcoming_trips)} chuyến xe xuất bến trong khung giờ {curr_time_str} - {end_time_str} ({window_hours} giờ tới).")
-
-        def get_mins_diff(hhmm, current_dt):
-            h, m = map(int, hhmm.split(':'))
-            target = current_dt.replace(hour=h, minute=m, second=0, microsecond=0)
-            if target < current_dt:
-                target += timedelta(days=1)
-            return (target - current_dt).total_seconds() / 60
-
-        route_reports = []
-        for tdata in upcoming_trips:
-            provinces_served = tdata['ProvincesServed']
-            matched_backlog = df_transit[df_transit['Tinh'].isin(provinces_served)].copy()
-            if matched_backlog.empty:
-                continue
-
-            # Group by Province only
-            prov_data = {}
-            for prov in sorted(list(provinces_served)):
-                p_orders = matched_backlog[matched_backlog['Tinh'] == prov]
-                if p_orders.empty:
-                    continue
-
-                prov_data[prov] = {
-                    'SoDon': int(p_orders['KhoGiao'].count()),
-                    'TongKG': float(p_orders['KG'].sum())
-                }
-
-            if prov_data:
-                total_route_orders = sum(p['SoDon'] for p in prov_data.values())
-                total_route_kg = sum(p['TongKG'] for p in prov_data.values())
-
-                route_reports.append({
-                    'MaTuyen': tdata['MaTuyen'],
-                    'HHMM': tdata['HHMM'],
-                    'Origin': tdata['Origin'],
-                    'TrongTai': tdata['TrongTai'],
-                    'TotalOrders': total_route_orders,
-                    'TotalKG': total_route_kg,
-                    'Provinces': prov_data,
-                    'MinsAway': get_mins_diff(tdata['HHMM'], now)
-                })
-
-        # Sort chronologically by minutes until departure, then highest KG
-        route_reports.sort(key=lambda x: (x['MinsAway'], -x['TotalKG']))
-
-        # Chọn 3 tuyến xuất bến gần nhất (tránh chọn trùng lặp cùng 1 tỉnh/tập tỉnh để báo cáo gọn gàng, không bị rối)
-        selected_reports = []
-        seen_prov_sets = set()
-        for r in route_reports:
-            prov_key = tuple(sorted(list(r['Provinces'].keys())))
-            if prov_key in seen_prov_sets:
-                continue
-            selected_reports.append(r)
-            seen_prov_sets.add(prov_key)
-            if len(selected_reports) == 3:
-                break
-
-        if len(selected_reports) < 3:
-            for r in route_reports:
-                if r not in selected_reports:
-                    selected_reports.append(r)
-                    if len(selected_reports) == 3:
-                        break
-
-        route_reports = selected_reports
-
-        # Format Telegram Message as requested
-        lines = []
-        lines.append(f"🚨 <b>CẢNH BÁO LỊCH TẢI TUYẾN ({window_hours} GIỜ TỚI)</b>")
-        lines.append(f"⏰ Thời điểm quét: <b>{now_str}</b>")
-        lines.append(f"⏳ Khung giờ xuất bến: <b>{curr_time_str} ➔ {end_time_str}</b>")
-        lines.append(f"📦 Tổng tồn Đài Tư: <b>{total_orders:,} đơn</b> · <b>{total_kg:,.1f} kg</b>")
-        lines.append(f"🚚 Hàng cần đi các tỉnh: <b>{transit_count:,} đơn</b> · <b>{transit_kg:,.1f} kg</b>\n")
-
-        if not route_reports:
-            lines.append(f"ℹ️ <i>Trong {window_hours} giờ tới không có chuyến xe nào xuất bến khớp với các tỉnh có hàng tồn.</i>")
-        else:
-            lines.append(f"🚛 <b>DANH SÁCH {len(route_reports)} TUYẾN XUẤT BẾN GẦN NHẤT:</b>\n")
-            # Liệt kê toàn bộ các tuyến, chỉ hiện tuyến xe và tỉnh tồn
-            for idx, r in enumerate(route_reports, 1):
-                tt_str = f"{r['TrongTai']} kg" if r['TrongTai'] else "Xe cố định"
-                lines.append(
-                    f"🚛 <b>{idx}. Tuyến <code>{r['MaTuyen']}</code> — Cung giờ: <b>{r['HHMM']}</b></b> (Tải xe: {tt_str})\n"
-                    f"   📊 <b>Tổng hàng lên xe: {r['TotalOrders']} đơn · ⚖️ {r['TotalKG']:,.1f} kg</b>"
-                )
-                for prov_name, pdata in r['Provinces'].items():
-                    lines.append(f"   • <b>Tỉnh {prov_name}:</b> {pdata['SoDon']} đơn - {pdata['TongKG']:,.1f} kg")
-                lines.append("")
-
-        # Add Google Sheet detail link
-        sheet_link = self.gg_sheet_url or "https://docs.google.com/spreadsheets/d/1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU/edit?gid=654306746#gid=654306746"
-        lines.append(f"📊 <b>Dữ liệu chi tiết {transit_count:,} đơn tồn (Google Sheet Tab TonUpdate1h):</b>\n👉 <a href=\"{sheet_link}\">Bấm vào đây để xem chi tiết từng đơn</a>\n")
-
-        lines.append("👉 <i>Vui lòng ưu tiên gom và xếp hàng lên các chuyến xe có giờ xuất bến sớm nhất!</i>")
-        msg = "\n".join(lines)
-
-        print("\n" + "=" * 70)
-        print(msg)
-        print("=" * 70 + "\n")
-
-        if send_tele:
-            self.send_telegram(msg, chat_id=chat_dst, thread_id=thread_dst)
-
-        return msg
 
     def send_telegram(self, text, chat_id=None, thread_id=None):
         dst_chat = chat_id or self.chat_id
@@ -1007,12 +1081,22 @@ class B2BTonAdvisor:
             self.send_telegram(fallback_msg, chat_id=chat_id, thread_id=thread_id)
 
     def run_listener(self):
+        BOT_STATUS['start_time'] = get_vietnam_now().strftime('%H:%M:%S %d/%m/%Y')
+        BOT_STATUS['polling_state'] = 'Đang khởi động'
         port = os.environ.get('PORT')
         if port:
             start_health_server(int(port))
         print("🚀 Bắt đầu lắng nghe tin nhắn Telegram (Chế độ gọi bot mới báo)...")
+        # Đảm bảo gỡ bỏ webhook xung đột nếu có
+        try:
+            requests.post(f"https://api.telegram.org/bot{self.bot_token}/deleteWebhook", json={'drop_pending_updates': False}, timeout=10)
+            print("✅ Đã đảm bảo webhook Telegram được gỡ bỏ để chạy chế độ Polling getUpdates.")
+        except Exception as e:
+            print(f"Lỗi khi xóa webhook: {e}")
+
         self.register_commands()
         offset = None
+        BOT_STATUS['polling_state'] = 'Active (Đang lắng nghe 24/7)'
 
         while True:
             try:
@@ -1022,11 +1106,27 @@ class B2BTonAdvisor:
 
                 url = f"https://api.telegram.org/bot{self.bot_token}/getUpdates"
                 res = requests.get(url, params=params, timeout=35)
+                BOT_STATUS['last_poll'] = get_vietnam_now().strftime('%H:%M:%S %d/%m/%Y')
+
+                if res.status_code == 409:
+                    print("⚠️ Phát hiện xung đột Webhook (409 Conflict). Đang tự động gỡ bỏ webhook...")
+                    BOT_STATUS['polling_state'] = '⚠️ 409 Conflict (Đang tự gỡ Webhook)'
+                    BOT_STATUS['last_error'] = 'Xung đột Webhook (409) - Đang tự động gỡ bỏ'
+                    try:
+                        requests.post(f"https://api.telegram.org/bot{self.bot_token}/deleteWebhook", json={'drop_pending_updates': False}, timeout=10)
+                    except Exception:
+                        pass
+                    time.sleep(3)
+                    continue
+
                 if res.status_code != 200:
+                    BOT_STATUS['polling_state'] = f'⚠️ HTTP {res.status_code}'
+                    BOT_STATUS['last_error'] = f'Telegram HTTP {res.status_code}: {res.text[:100]}'
                     print(f"⚠️ Telegram polling status {res.status_code}: {res.text}")
                     time.sleep(3)
                     continue
 
+                BOT_STATUS['polling_state'] = 'Active (Bình thường 24/7)'
                 data = res.json()
                 if not data.get('ok'):
                     print(f"⚠️ Telegram getUpdates not ok: {data}")
@@ -1035,12 +1135,14 @@ class B2BTonAdvisor:
 
                 for update in data.get('result', []):
                     offset = update['update_id'] + 1
+                    BOT_STATUS['total_messages'] = BOT_STATUS.get('total_messages', 0) + 1
                     self.handle_telegram_update(update)
 
-
             except requests.exceptions.Timeout:
+                BOT_STATUS['last_poll'] = get_vietnam_now().strftime('%H:%M:%S %d/%m/%Y')
                 continue
             except Exception as e:
+                BOT_STATUS['last_error'] = f'Lỗi vòng lặp Polling: {str(e)}'
                 print(f"Lỗi polling listener: {e}")
                 time.sleep(3)
 
