@@ -432,13 +432,30 @@ with tab1:
                     
             if 'NguonNhap' in df_chart1.columns:
                 grouped_nguon = df_chart1.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+                
+                # Thêm đường Tổng nhập để thể hiện cả xu hướng tổng và chi tiết từng nguồn
+                grouped_total = df_chart1.groupby(['Period', 'Ngày']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+                grouped_total['NguonNhap'] = 'Tổng nhập'
+                grouped_chart = pd.concat([grouped_total, grouped_nguon], ignore_index=True)
+
                 if freq == 'D':
-                    recent_days = sorted(grouped_nguon['Period'].unique())[-30:]
-                    grouped_nguon = grouped_nguon[grouped_nguon['Period'].isin(recent_days)]
-                if not grouped_nguon.empty:
+                    recent_days = sorted(grouped_chart['Period'].unique())[-30:]
+                    grouped_chart = grouped_chart[grouped_chart['Period'].isin(recent_days)]
+                if not grouped_chart.empty:
                     y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
-                    fig2 = px.bar(grouped_nguon, x='Ngày', y=y_col, color='NguonNhap', barmode='stack', title="Nguồn nhập", labels={'NguonNhap': ''}, custom_data=['Số_đơn', 'Tổng_KG'])
-                    fig2.update_xaxes(categoryorder='array', categoryarray=grouped_nguon['Ngày'].unique())
+                    y_label = 'Số đơn' if metric_view == 'Số đơn' else 'Khối lượng (kg)'
+                    fig2 = px.line(
+                        grouped_chart, 
+                        x='Ngày', 
+                        y=y_col, 
+                        color='NguonNhap', 
+                        markers=True, 
+                        title="Biểu đồ nguồn nhập", 
+                        labels={'NguonNhap': 'Nguồn nhập', y_col: y_label}, 
+                        custom_data=['Số_đơn', 'Tổng_KG']
+                    )
+                    sorted_days = grouped_chart.sort_values('Period')['Ngày'].unique()
+                    fig2.update_xaxes(categoryorder='array', categoryarray=sorted_days)
                     fig2.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig2, use_container_width=True)
                 else:
