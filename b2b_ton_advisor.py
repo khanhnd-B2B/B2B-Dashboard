@@ -98,6 +98,12 @@ PROVINCES_LIST = [
     'BRVT', 'Đồng Tháp', 'Trà Vinh', 'Ninh Thuận', 'Tây Ninh'
 ]
 
+NO_ROUTE_ADVICE_PROVINCES = {'Hà Nội', 'Bắc Ninh'}
+
+def is_no_route_province(p):
+    p_lower = str(p).strip().lower()
+    return p_lower in ['hà nội', 'ha noi', 'bắc ninh', 'bac ninh']
+
 def extract_province(name):
     name = str(name).strip()
     m = re.match(r'^\(([A-Za-z0-9]+)\)', name)
@@ -677,11 +683,12 @@ class B2BTonAdvisor:
         upcoming_trips = self.get_upcoming_trips(now, window_hours=window_hours)
         print(f"Tìm thấy {len(upcoming_trips)} chuyến xe xuất bến trong khung giờ {curr_time_str} - {end_time_str} ({window_hours} giờ tới).")
 
-        # Map each province to its upcoming trips
+        # Map each province to its upcoming trips (bỏ qua Hà Nội và Bắc Ninh)
         prov_to_trips = defaultdict(list)
         for t in upcoming_trips:
             for p in t['ProvincesServed']:
-                prov_to_trips[p].append(t)
+                if not is_no_route_province(p):
+                    prov_to_trips[p].append(t)
 
         # Summary by Province (TOÀN BỘ CÁC TỈNH CÓ HÀNG TỒN)
         if not df_transit.empty:
@@ -692,11 +699,12 @@ class B2BTonAdvisor:
         else:
             prov_summary = pd.DataFrame(columns=['Tinh', 'SoDon', 'TongKG'])
 
-        # Upcoming trips with matching backlog
+        # Upcoming trips with matching backlog (loại trừ hàng Hà Nội & Bắc Ninh khỏi việc ghép tuyến xe)
+        df_transit_route = df_transit[~df_transit['Tinh'].apply(is_no_route_province)]
         seen_trips = set()
         unique_upcoming = []
         for t in upcoming_trips:
-            matched = df_transit[df_transit['Tinh'].isin(t['ProvincesServed'])]
+            matched = df_transit_route[df_transit_route['Tinh'].isin(t['ProvincesServed'])]
             if not matched.empty and t['MaChuyen'] not in seen_trips:
                 seen_trips.add(t['MaChuyen'])
                 unique_upcoming.append({
@@ -726,13 +734,17 @@ class B2BTonAdvisor:
                 p = r.Tinh
                 sd = r.SoDon
                 kg = r.TongKG
-                trips = prov_to_trips.get(p, [])
-                if trips:
-                    t0 = trips[0]
-                    trip_info = f"🚛 <code>{t0['MaTuyen']}</code> (<b>{t0['HHMM']}</b>)"
+                if is_no_route_province(p):
+                    # Riêng Hà Nội và Bắc Ninh: chỉ liệt kê vol hàng tồn, không định hướng tuyến
+                    lines.append(f"{idx}. <b>{p}:</b> {sd} đơn · {kg:,.1f} kg")
                 else:
-                    trip_info = f"⏳ <i>Chưa có chuyến trong {window_hours}h</i>"
-                lines.append(f"{idx}. <b>{p}:</b> {sd} đơn · {kg:,.1f} kg ➔ {trip_info}")
+                    trips = prov_to_trips.get(p, [])
+                    if trips:
+                        t0 = trips[0]
+                        trip_info = f"🚛 <code>{t0['MaTuyen']}</code> (<b>{t0['HHMM']}</b>)"
+                    else:
+                        trip_info = f"⏳ <i>Chưa có chuyến trong {window_hours}h</i>"
+                    lines.append(f"{idx}. <b>{p}:</b> {sd} đơn · {kg:,.1f} kg ➔ {trip_info}")
             lines.append("")
 
         if unique_upcoming:
