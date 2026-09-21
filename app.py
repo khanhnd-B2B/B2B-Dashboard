@@ -142,35 +142,44 @@ def load_data():
     df = pd.DataFrame()
     source_used = ""
 
-    # ✅ ƯU TIÊN 1: Đọc trực tiếp từ Google Sheets API (luôn mới nhất, không cần reboot)
+    # 1. Nạp toàn bộ lịch sử từ file Data B2B Master.xlsx (chứa đầy đủ lịch sử từ tháng 7 đến nay)
+    local_file = 'Data B2B Master.xlsx'
+    df_master = pd.DataFrame()
+    if os.path.exists(local_file):
+        try:
+            df_local = pd.read_excel(local_file)
+            if len(df_local.columns) > 0 and str(df_local.columns[0]).startswith('Unnamed:'):
+                for i in range(min(5, len(df_local))):
+                    if 'NgayNhap' in df_local.iloc[i].values:
+                        df_local.columns = df_local.iloc[i]
+                        df_local = df_local[i+1:].reset_index(drop=True)
+                        break
+            if not df_local.empty:
+                df_master = df_local
+        except Exception:
+            pass
+
+    # 2. Đọc bổ sung đơn mới nhất từ Google Sheets API (Live)
+    df_live = None
     try:
-        df_api = _load_from_google_sheets_api()
-        if df_api is not None and not df_api.empty:
-            df = df_api
-            source_used = "Google Sheets API (Live)"
+        df_live = _load_from_google_sheets_api()
     except Exception:
         pass
 
-    # ✅ ƯU TIÊN 2: Đọc từ file Excel local (được GitHub Actions cập nhật)
-    if df.empty:
-        local_file = 'Data B2B Master.xlsx'
-        if os.path.exists(local_file):
-            try:
-                df_local = pd.read_excel(local_file)
-                if len(df_local.columns) > 0 and str(df_local.columns[0]).startswith('Unnamed:'):
-                    for i in range(min(5, len(df_local))):
-                        if 'NgayNhap' in df_local.iloc[i].values:
-                            df_local.columns = df_local.iloc[i]
-                            df_local = df_local[i+1:].reset_index(drop=True)
-                            break
-                if not df_local.empty:
-                    df = df_local
-                    source_used = local_file
-            except Exception:
-                pass
-
-    # ✅ ƯU TIÊN 3 (dự phòng): Đọc từ Google Sheets URL (CSV export)
-    if df.empty:
+    # 3. Kết hợp: Giữ trọn vẹn lịch sử cũ + ghép các đơn mới nhất từ Google Sheet
+    if not df_master.empty and df_live is not None and not df_live.empty:
+        df = pd.concat([df_master, df_live], ignore_index=True)
+        if 'MaDonGoc' in df.columns:
+            df = df.drop_duplicates(subset=['MaDonGoc'], keep='last')
+        source_used = f"{local_file} + Google Sheets Live"
+    elif not df_master.empty:
+        df = df_master
+        source_used = local_file
+    elif df_live is not None and not df_live.empty:
+        df = df_live
+        source_used = "Google Sheets API (Live)"
+    else:
+        # Dự phòng: Đọc từ Google Sheets URL (CSV export)
         url = st.secrets.get("SHEET_URL", "")
         try:
             if url:

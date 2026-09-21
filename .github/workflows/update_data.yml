@@ -36,7 +36,7 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git add "Data B2B Master.xlsx" advisor_config.json
           if ! git diff --staged --quiet; then
-            git commit -m "Auto-update data from Google Sheets [skip ci]"
+            git commit -m "Auto-update data from Google Sheets"
             git pull --rebase origin main || true
             git push origin HEAD:main || true
           else
