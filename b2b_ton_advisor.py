@@ -34,20 +34,19 @@ DEFAULT_CONFIG = {
 TRUCK_FILE = os.path.join(os.path.dirname(__file__), 'data chuyến Truck 7 ngày 11.09.xlsx')
 
 PREFIX_TO_PROVINCE = {
-    'HNO': 'Hà Nội', 'HN': 'Hà Nội',
-    'QNI': 'Quảng Ninh', 'QN': 'Quảng Ninh',
-    'BGI': 'Bắc Giang', 'BG': 'Bắc Giang',
+    # Miền Bắc
+    'HNO': 'Hà Nội', 'HN': 'Hà Nội', 'HAN': 'Hà Nội',
     'BNI': 'Bắc Ninh', 'BN': 'Bắc Ninh',
-    'THO': 'Thanh Hóa', 'TH': 'Thanh Hóa',
-    'NAN': 'Nghệ An', 'NA': 'Nghệ An',
+    'BGI': 'Bắc Giang', 'BG': 'Bắc Giang',
+    'QNI': 'Quảng Ninh', 'QN': 'Quảng Ninh',
     'HPG': 'Hải Phòng', 'HP': 'Hải Phòng', 'HPH': 'Hải Phòng',
     'HDU': 'Hải Dương', 'HD': 'Hải Dương',
     'HYE': 'Hưng Yên', 'HY': 'Hưng Yên',
-    'NDI': 'Nam Định', 'NĐ': 'Nam Định',
+    'NDI': 'Nam Định', 'NĐ': 'Nam Định', 'NAM': 'Nam Định',
     'NBI': 'Ninh Bình', 'NB': 'Ninh Bình',
     'TBH': 'Thái Bình', 'TB': 'Thái Bình', 'TBI': 'Thái Bình',
     'HNA': 'Hà Nam', 'HNAM': 'Hà Nam',
-    'THN': 'Thái Nguyên', 'TN': 'Thái Nguyên',
+    'THN': 'Thái Nguyên', 'TN': 'Thái Nguyên', 'TNG': 'Thái Nguyên',
     'LSN': 'Lạng Sơn', 'LS': 'Lạng Sơn', 'LSO': 'Lạng Sơn',
     'PTO': 'Phú Thọ', 'PT': 'Phú Thọ', 'PTH': 'Phú Thọ',
     'VPH': 'Vĩnh Phúc', 'VP': 'Vĩnh Phúc',
@@ -55,34 +54,58 @@ PREFIX_TO_PROVINCE = {
     'SLA': 'Sơn La', 'SL': 'Sơn La',
     'LCA': 'Lào Cai', 'LC': 'Lào Cai',
     'YBA': 'Yên Bái', 'YB': 'Yên Bái',
-    'TQG': 'Tuyên Quang', 'TQ': 'Tuyên Quang',
+    'TQG': 'Tuyên Quang', 'TQ': 'Tuyên Quang', 'TQU': 'Tuyên Quang',
     'HAG': 'Hà Giang', 'HG': 'Hà Giang',
-    'DNA': 'Đà Nẵng', 'ĐN': 'Đà Nẵng', 'DNG': 'Đà Nẵng',
-    'SGN': 'Hồ Chí Minh', 'HCM': 'Hồ Chí Minh',
-    'BDU': 'Bình Dương', 'BD': 'Bình Dương',
-    'DNI': 'Đồng Nai', 'ĐNAI': 'Đồng Nai',
-    'LAN': 'Long An', 'LA': 'Long An',
-    'BPC': 'Bình Phước', 'BP': 'Bình Phước', 'BPH': 'Bình Phước',
-    'BTH': 'Bình Thuận', 'BT': 'Bình Thuận', 'NTH': 'Ninh Thuận',
+    'BKA': 'Bắc Kạn', 'BK': 'Bắc Kạn',
+    'CBG': 'Cao Bằng', 'CBA': 'Cao Bằng', 'CB': 'Cao Bằng',
+    'DBI': 'Điện Biên', 'ĐB': 'Điện Biên', 'DB': 'Điện Biên',
+    'LCH': 'Lai Châu', 'LCU': 'Lai Châu',
+
+    # Miền Trung & Tây Nguyên
+    'THO': 'Thanh Hóa', 'TH': 'Thanh Hóa', 'THA': 'Thanh Hóa',
+    'NAN': 'Nghệ An', 'NA': 'Nghệ An', 'NGA': 'Nghệ An',
+    'HTI': 'Hà Tĩnh', 'HT': 'Hà Tĩnh',
     'QBI': 'Quảng Bình', 'QB': 'Quảng Bình',
     'QTI': 'Quảng Trị', 'QT': 'Quảng Trị', 'QTR': 'Quảng Trị',
     'TTH': 'Thừa Thiên Huế', 'HUE': 'Thừa Thiên Huế',
+    'DNA': 'Đà Nẵng', 'ĐN': 'Đà Nẵng', 'DNG': 'Đà Nẵng',
     'QNA': 'Quảng Nam', 'QNM': 'Quảng Nam',
     'QNG': 'Quảng Ngãi', 'QNGA': 'Quảng Ngãi',
-    'BDI': 'Bình Định', 'BĐ': 'Bình Định',
+    'BDI': 'Bình Định', 'BĐ': 'Bình Định', 'BDH': 'Bình Định',
     'PYE': 'Phú Yên', 'PY': 'Phú Yên',
-    'KHA': 'Khánh Hòa', 'KH': 'Khánh Hòa',
-    'GLI': 'Gia Lai', 'GL': 'Gia Lai',
-    'DKL': 'Đắk Lắk', 'DLK': 'Đắk Lắk',
+    'KHA': 'Khánh Hòa', 'KH': 'Khánh Hòa', 'KHO': 'Khánh Hòa',
+    'NTH': 'Ninh Thuận', 'NT': 'Ninh Thuận', 'NTU': 'Ninh Thuận',
+    'BTH': 'Bình Thuận', 'BT': 'Bình Thuận',
+    'KTU': 'Kon Tum', 'KT': 'Kon Tum',
+    'GLI': 'Gia Lai', 'GL': 'Gia Lai', 'GLA': 'Gia Lai',
+    'DKL': 'Đắk Lắk', 'DLK': 'Đắk Lắk', 'DLA': 'Đắk Lắk', 'DL': 'Đắk Lắk',
     'DKN': 'Đắk Nông', 'DNO': 'Đắk Nông',
-    'LDG': 'Lâm Đồng', 'LĐ': 'Lâm Đồng',
-    'CTO': 'Cần Thơ', 'CT': 'Cần Thơ',
+    'LDG': 'Lâm Đồng', 'LĐ': 'Lâm Đồng', 'LDO': 'Lâm Đồng',
+
+    # Miền Nam & ĐBSCL
+    'SGN': 'Hồ Chí Minh', 'HCM': 'Hồ Chí Minh',
+    'BDU': 'Bình Dương', 'BD': 'Bình Dương',
+    'DNI': 'Đồng Nai', 'ĐNAI': 'Đồng Nai', 'DN': 'Đồng Nai',
+    'BPC': 'Bình Phước', 'BP': 'Bình Phước', 'BPH': 'Bình Phước',
+    'TNI': 'Tây Ninh', 'TN': 'Tây Ninh',
+    'BVT': 'Bà Rịa - Vũng Tàu', 'VT': 'Bà Rịa - Vũng Tàu', 'BRVT': 'Bà Rịa - Vũng Tàu',
+    'LAN': 'Long An', 'LA': 'Long An',
+    'TGI': 'Tiền Giang', 'TG': 'Tiền Giang',
+    'BTR': 'Bến Tre', 'BT': 'Bến Tre',
+    'DTH': 'Đồng Tháp', 'ĐT': 'Đồng Tháp',
+    'AGI': 'An Giang', 'AG': 'An Giang', 'AGG': 'An Giang',
     'KGG': 'Kiên Giang', 'KG': 'Kiên Giang', 'KGI': 'Kiên Giang',
-    'AGG': 'An Giang', 'AG': 'An Giang',
-    'CMU': 'Cà Mau', 'CM': 'Cà Mau',
-    'BKA': 'Bắc Kạn', 'DBI': 'Điện Biên',
-    'STR': 'Sóc Trăng', 'TNI': 'Tây Ninh',
-    'KTU': 'Kon Tum', 'CBA': 'Cao Bằng',
+    'CTO': 'Cần Thơ', 'CT': 'Cần Thơ', 'CTH': 'Cần Thơ',
+    'HGI': 'Hậu Giang', 'HG': 'Hậu Giang',
+    'VLO': 'Vĩnh Long', 'VL': 'Vĩnh Long',
+    'TVI': 'Trà Vinh', 'TV': 'Trà Vinh',
+    'SOC': 'Sóc Trăng', 'ST': 'Sóc Trăng', 'STR': 'Sóc Trăng', 'STG': 'Sóc Trăng',
+    'BLI': 'Bạc Liêu', 'BL': 'Bạc Liêu',
+    'CMU': 'Cà Mau', 'CM': 'Cà Mau', 'CMA': 'Cà Mau',
+
+    # Hubs liên vùng
+    'TNB': 'Cần Thơ',
+    'DNB': 'Hồ Chí Minh',
 }
 
 PROVINCES_LIST = [
@@ -95,8 +118,53 @@ PROVINCES_LIST = [
     'Huế', 'Quảng Nam', 'Quảng Ngãi', 'Bình Định', 'Phú Yên', 'Khánh Hòa',
     'Khánh Hoà', 'Gia Lai', 'Đắk Lắk', 'Đắk Nông', 'Lâm Đồng', 'Cần Thơ',
     'Kiên Giang', 'An Giang', 'Cà Mau', 'Hà Nội', 'Hà Tĩnh', 'Bà Rịa - Vũng Tàu',
-    'BRVT', 'Đồng Tháp', 'Trà Vinh', 'Ninh Thuận', 'Tây Ninh'
+    'BRVT', 'Đồng Tháp', 'Trà Vinh', 'Ninh Thuận', 'Tây Ninh', 'Bến Tre',
+    'Vĩnh Long', 'Sóc Trăng', 'Bạc Liêu', 'Hậu Giang', 'Tiền Giang', 'Điện Biên',
+    'Lai Châu', 'Bắc Kạn', 'Cao Bằng', 'Kon Tum'
 ]
+
+HN_KEYWORDS = [
+    'hà nội', 'ha noi', 'long biên', 'thanh xuân', 'hoài đức', 'cầu giấy', 'ba đình',
+    'đông anh', 'mê linh', 'sóc sơn', 'tây hồ', 'hoàn kiếm', 'đống đa', 'hai bà trưng',
+    'thanh trì', 'hoàng mai', 'hà đông', 'nam từ liêm', 'bắc từ liêm', 'phúc thọ', 'ứng hòa',
+    'ứng hoà', 'thường tín', 'phú xuyên', 'mỹ đức', 'chương mỹ', 'thanh oai', 'đan phượng',
+    'thạch thất', 'quốc oai', 'ba vì', 'sơn tây', 'gia lâm'
+]
+
+CITY_DISTRICT_TO_PROVINCE = {
+    # Khánh Hòa
+    'nha trang': 'Khánh Hòa', 'cam ranh': 'Khánh Hòa', 'cam lâm': 'Khánh Hòa',
+    'ninh hòa': 'Khánh Hòa', 'diên khánh': 'Khánh Hòa', 'vạn ninh': 'Khánh Hòa',
+    'khánh vĩnh': 'Khánh Hòa', 'khánh sơn': 'Khánh Hòa',
+    # Lâm Đồng
+    'đà lạt': 'Lâm Đồng', 'da lat': 'Lâm Đồng', 'bảo lộc': 'Lâm Đồng', 'đức trọng': 'Lâm Đồng',
+    'di linh': 'Lâm Đồng', 'đơn dương': 'Lâm Đồng', 'lâm hà': 'Lâm Đồng',
+    # Đắk Lắk
+    'buôn ma thuột': 'Đắk Lắk', 'bmt': 'Đắk Lắk', 'buôn hồ': 'Đắk Lắk', 'ea h\'leo': 'Đắk Lắk',
+    'krông năng': 'Đắk Lắk', 'krông pắc': 'Đắk Lắk', 'cư m\'gar': 'Đắk Lắk',
+    # Gia Lai
+    'pleiku': 'Gia Lai', 'an khê': 'Gia Lai', 'ayun pa': 'Gia Lai', 'chư sê': 'Gia Lai',
+    # Bình Thuận / Ninh Thuận
+    'phan thiết': 'Bình Thuận', 'la gi': 'Bình Thuận', 'phan rang': 'Ninh Thuận',
+    # Bình Định
+    'quy nhơn': 'Bình Định', 'an nhơn': 'Bình Định', 'hoài nhơn': 'Bình Định',
+    # BRVT
+    'vũng tàu': 'Bà Rịa - Vũng Tàu', 'bà rịa': 'Bà Rịa - Vũng Tàu', 'phú mỹ': 'Bà Rịa - Vũng Tàu',
+    'hồ tràm': 'Bà Rịa - Vũng Tàu', 'xuyên mộc': 'Bà Rịa - Vũng Tàu', 'long điền': 'Bà Rịa - Vũng Tàu',
+    # Tây Nam Bộ
+    'tnb': 'Cần Thơ', 'tây nam bộ': 'Cần Thơ', 'ninh kiều': 'Cần Thơ', 'cái răng': 'Cần Thơ',
+    'long xuyên': 'An Giang', 'châu đốc': 'An Giang', 'rạch giá': 'Kiên Giang', 'hà tiên': 'Kiên Giang',
+    'mỹ tho': 'Tiền Giang', 'tân an': 'Long An', 'bến tre': 'Bến Tre', 'trà vinh': 'Trà Vinh',
+    'vĩnh long': 'Vĩnh Long', 'sóc trăng': 'Sóc Trăng', 'bạc liêu': 'Bạc Liêu', 'cà mau': 'Cà Mau',
+    # Miền Trung
+    'tam kỳ': 'Quảng Nam', 'hội an': 'Quảng Nam',
+    'huế': 'Thừa Thiên Huế', 'đồng hới': 'Quảng Bình', 'đông hà': 'Quảng Trị',
+    'vinh': 'Nghệ An', 'cửa lò': 'Nghệ An', 'sầm sơn': 'Thanh Hóa', 'bỉm sơn': 'Thanh Hóa',
+    # Miền Bắc
+    'hạ long': 'Quảng Ninh', 'cẩm phả': 'Quảng Ninh', 'móng cái': 'Quảng Ninh', 'uông bí': 'Quảng Ninh',
+    'thủy nguyên': 'Hải Phòng', 'chí linh': 'Hải Dương', 'từ sơn': 'Bắc Ninh',
+    'việt yên': 'Bắc Giang', 'sông công': 'Thái Nguyên'
+}
 
 NO_ROUTE_ADVICE_PROVINCES = {'Hà Nội', 'Bắc Ninh'}
 
@@ -106,15 +174,23 @@ def is_no_route_province(p):
 
 def extract_province(name):
     name = str(name).strip()
+    if not name or name == 'nan':
+        return 'Khác'
+
+    # 1. Check mã tỉnh trong ngoặc đơn, ví dụ (KHO), (HN), (GLA), (BVT)...
     m = re.match(r'^\(([A-Za-z0-9]+)\)', name)
     if m:
         pfx = m.group(1).upper()
         if pfx in PREFIX_TO_PROVINCE:
             return PREFIX_TO_PROVINCE[pfx]
 
-    parts = name.split('-')
+    # 2. Check phần đuôi sau dấu gạch ngang cuối cùng, ví dụ ...-HN, ...-HCM, ...-Đà Nẵng
+    parts = [p.strip() for p in name.split('-')]
     if len(parts) >= 2:
-        last_part = parts[-1].strip()
+        last_part = parts[-1]
+        last_upper = last_part.upper()
+        if last_upper in PREFIX_TO_PROVINCE:
+            return PREFIX_TO_PROVINCE[last_upper]
         for p in PROVINCES_LIST:
             if p.lower() == last_part.lower():
                 if 'thanh ho' in p.lower(): return 'Thanh Hóa'
@@ -124,8 +200,10 @@ def extract_province(name):
                 if p == 'HCM': return 'Hồ Chí Minh'
                 return p
 
+    # 3. Check tên tỉnh trực tiếp trong chuỗi
     for p in PROVINCES_LIST:
-        if p.lower() in name.lower():
+        pattern = r'(?i)(?:\b|_|-|\s|^)' + re.escape(p) + r'(?:\b|_|-|\s|$)'
+        if re.search(pattern, name):
             if 'thanh ho' in p.lower(): return 'Thanh Hóa'
             if 'hoà bình' in p.lower() or 'hòa bình' in p.lower(): return 'Hòa Bình'
             if 'khánh ho' in p.lower(): return 'Khánh Hòa'
@@ -134,8 +212,18 @@ def extract_province(name):
             if p == 'HCM': return 'Hồ Chí Minh'
             return p
 
-    if any(k in name.lower() for k in ['hà nội', 'long biên', 'thanh xuân', 'hoài đức', 'cầu giấy', 'ba đình', 'đông anh', 'mê linh', 'sóc sơn', 'tây hồ', 'hoàn kiếm', 'đống đa', 'hai bà trưng', 'thanh trì', 'hoàng mai', 'hà đông', 'nam từ liêm', 'bắc từ liêm']):
-        return 'Hà Nội'
+    # 4. Check từ khóa thành phố/huyện trực thuộc tỉnh
+    name_lower = name.lower()
+    for kw, prov in CITY_DISTRICT_TO_PROVINCE.items():
+        pattern = r'(?i)(?:\b|_|-|\s|^)' + re.escape(kw) + r'(?:\b|_|-|\s|$)'
+        if re.search(pattern, name_lower):
+            return prov
+
+    # 5. Check các quận/huyện Hà Nội
+    for kw in HN_KEYWORDS:
+        pattern = r'(?i)(?:\b|_|-|\s|^)' + re.escape(kw) + r'(?:\b|_|-|\s|$)'
+        if re.search(pattern, name_lower):
+            return 'Hà Nội'
 
     return 'Khác'
 
