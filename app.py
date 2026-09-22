@@ -866,6 +866,7 @@ with tab_growth:
                 )
                 fig_prod.update_traces(textposition='outside')
                 fig_prod.update_layout(xaxis_title="Thời gian", yaxis_title=y_measure)
+                fig_prod.update_xaxes(categoryorder='array', categoryarray=df_chart_data['Kỳ'].unique())
                 st.plotly_chart(fig_prod, use_container_width=True)
 
             with col_ch2:
@@ -884,6 +885,7 @@ with tab_growth:
                 fig_pct.update_traces(textposition='outside')
                 fig_pct.add_hline(y=0, line_dash="dash", line_color="gray")
                 fig_pct.update_layout(xaxis_title="Thời gian", yaxis_title="% Thay đổi")
+                fig_pct.update_xaxes(categoryorder='array', categoryarray=df_growth_clean['Kỳ'].unique())
                 st.plotly_chart(fig_pct, use_container_width=True)
 
         with chart_tab2:
@@ -898,6 +900,7 @@ with tab_growth:
                     color_discrete_sequence=['#ff7f0e']
                 )
                 fig_kh.update_layout(xaxis_title="Thời gian", yaxis_title="Số khách hàng")
+                fig_kh.update_xaxes(categoryorder='array', categoryarray=df_chart_data['Kỳ'].unique())
                 st.plotly_chart(fig_kh, use_container_width=True)
             with col_kh2:
                 fig_new_kh = px.bar(
@@ -910,6 +913,7 @@ with tab_growth:
                 )
                 fig_new_kh.update_traces(textposition='outside')
                 fig_new_kh.update_layout(xaxis_title="Thời gian", yaxis_title="Số KH mới")
+                fig_new_kh.update_xaxes(categoryorder='array', categoryarray=df_chart_data['Kỳ'].unique())
                 st.plotly_chart(fig_new_kh, use_container_width=True)
 
         with chart_tab3:
@@ -948,6 +952,8 @@ with tab_growth:
                         title=f"So sánh sản lượng {y_wh_metric.replace('_', ' ').lower()} giữa Đài Tư và Hưng Yên",
                         custom_data=['Số_đơn', 'Tổng_KG', 'Số_KH']
                     )
+                    sorted_wh_labels = wh_grouped.drop_duplicates('Period_Calc').sort_values('Period_Calc')['Period_Label'].unique()
+                    fig_wh_comp.update_xaxes(categoryorder='array', categoryarray=sorted_wh_labels)
                     fig_wh_comp.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Số đơn: %{customdata[0]:,.0f}<br>Tổng KG: %{customdata[1]:,.0f}<br>Số KH: %{customdata[2]}")
                     st.plotly_chart(fig_wh_comp, use_container_width=True)
 
