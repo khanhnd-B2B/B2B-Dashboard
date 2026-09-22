@@ -126,6 +126,22 @@ try:
     df_combined.to_excel(MASTER_FILE, index=False)
     print(f'✅ Cập nhật thành công vào {MASTER_FILE}!')
 
+    # 2. Cập nhật dữ liệu lịch tải 7 ngày từ tab LichTaiUpdate7Ngay
+    TRUCK_RANGE = 'LichTaiUpdate7Ngay'
+    TRUCK_FILE = 'LichTaiUpdate7Ngay.xlsx'
+    print(f'[{datetime.datetime.now()}] Đang kéo dữ liệu lịch tải 7 ngày (Tab {TRUCK_RANGE})...')
+    try:
+        result_truck = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=TRUCK_RANGE).execute()
+        values_truck = result_truck.get('values', [])
+        if values_truck and len(values_truck) >= 2:
+            df_truck = pd.DataFrame(values_truck[1:], columns=values_truck[0])
+            df_truck.to_excel(TRUCK_FILE, index=False)
+            print(f'✅ Cập nhật thành công {len(df_truck)} chuyến lịch tải 7 ngày vào {TRUCK_FILE}!')
+        else:
+            print(f'⚠️ Tab {TRUCK_RANGE} rỗng hoặc không có dữ liệu.')
+    except Exception as e_truck:
+        print(f'⚠️ Lỗi khi kéo tab {TRUCK_RANGE}: {e_truck}')
+
 except Exception as e:
     print(f'❌ Lỗi cập nhật dữ liệu: {str(e)}')
     sys.exit(1)

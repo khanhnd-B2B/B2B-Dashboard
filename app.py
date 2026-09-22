@@ -12,13 +12,19 @@ pd.set_option("styler.render.max_elements", 5000000)
 
 st.set_page_config(page_title="B2B DELIVERY DASHBOARD", layout="wide", initial_sidebar_state="expanded")
 
-CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID", "")
-CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET", "")
-REDIRECT_URI = st.secrets.get("REDIRECT_URI", "https://b2b-dashboard-dsgkivhypxmlqtjujsic2d.streamlit.app/")
+def get_secret(key, default=""):
+    try:
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+CLIENT_ID = get_secret("GOOGLE_CLIENT_ID", "")
+CLIENT_SECRET = get_secret("GOOGLE_CLIENT_SECRET", "")
+REDIRECT_URI = get_secret("REDIRECT_URI", "https://b2b-dashboard-dsgkivhypxmlqtjujsic2d.streamlit.app/")
 
 # Lấy danh sách email được phép (cách nhau bằng dấu phẩy) từ secrets
-ALLOWED_EMAILS = [e.strip().lower() for e in st.secrets.get("ALLOWED_EMAILS", "").split(",") if e.strip()]
-ADMIN_EMAILS = [e.strip().lower() for e in st.secrets.get("ADMIN_EMAILS", "admin@ghn.vn").split(",") if e.strip()]
+ALLOWED_EMAILS = [e.strip().lower() for e in get_secret("ALLOWED_EMAILS", "").split(",") if e.strip()]
+ADMIN_EMAILS = [e.strip().lower() for e in get_secret("ADMIN_EMAILS", "admin@ghn.vn").split(",") if e.strip()]
 
 from streamlit_cookies_controller import CookieController
 controller = CookieController()
@@ -76,17 +82,15 @@ if not require_login():
     st.stop()
 
 # ==================== LOAD DATA ====================
-def _load_from_google_sheets_api():
-    """Đọc dữ liệu trực tiếp từ Google Sheets API (luôn có dữ liệu mới nhất, không phụ thuộc Git commit)."""
+def _get_google_sheets_service():
+    """Lấy Google Sheets API service từ advisor_config.json hoặc secrets."""
     try:
         import json, base64
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
 
-        SPREADSHEET_ID = '1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU'
         SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-
         creds = None
         # Nguồn 1: advisor_config.json (google_token_b64)
         if os.path.exists('advisor_config.json'):
@@ -103,7 +107,7 @@ def _load_from_google_sheets_api():
         # Nguồn 2: Streamlit secrets (google_token_b64)
         if not creds:
             try:
-                b64_token = st.secrets.get("GOOGLE_TOKEN_B64", "")
+                b64_token = get_secret("GOOGLE_TOKEN_B64", "")
                 if b64_token:
                     tdata = json.loads(base64.b64decode(b64_token).decode('utf-8'))
                     creds = Credentials.from_authorized_user_info(tdata, SCOPES)
@@ -125,7 +129,17 @@ def _load_from_google_sheets_api():
             except Exception:
                 pass
 
-        service = build('sheets', 'v4', credentials=creds)
+        return build('sheets', 'v4', credentials=creds)
+    except Exception:
+        return None
+
+def _load_from_google_sheets_api():
+    """Đọc dữ liệu đơn trực tiếp từ Google Sheets API tab DataSorting."""
+    try:
+        service = _get_google_sheets_service()
+        if not service:
+            return None
+        SPREADSHEET_ID = '1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU'
         result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID, range='DataSorting'
         ).execute()
@@ -136,6 +150,45 @@ def _load_from_google_sheets_api():
     except Exception as e:
         st.sidebar.warning(f"⚠️ Google Sheets API không khả dụng: {e}")
     return None
+
+@st.cache_data(ttl=1800)
+def load_truck_schedule():
+    """Đọc dữ liệu lịch tải 7 ngày từ Google Sheets API (tab LichTaiUpdate7Ngay) hoặc file cục bộ dự phòng."""
+    SPREADSHEET_ID = '1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU'
+    # 1. Ưu tiên đọc trực tiếp từ Google Sheets API (tab LichTaiUpdate7Ngay)
+    try:
+        service = _get_google_sheets_service()
+        if service:
+            result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID, range='LichTaiUpdate7Ngay'
+            ).execute()
+            values = result.get('values', [])
+            if values and len(values) >= 2:
+                df = pd.DataFrame(values[1:], columns=values[0])
+                return df, "Google Sheet (LichTaiUpdate7Ngay - 7 ngày gần nhất)"
+    except Exception:
+        pass
+
+    # 2. Dự phòng đọc file cục bộ đã đồng bộ
+    route_files = [
+        'LichTaiUpdate7Ngay.xlsx',
+        'data chuyến Truck 7 ngày 11.09.xlsx',
+        'data chuyến cố định 7 ngày gần nhất 9.9.xlsx',
+        'data chuyến cố định 7 ngày gần nhất 3.9.xlsx',
+    ]
+    for rf in route_files:
+        p = os.path.join(os.path.dirname(__file__), rf)
+        if os.path.exists(p):
+            try:
+                df_test = pd.read_excel(p, nrows=2)
+                if 'MaTuyen' in df_test.columns:
+                    df = pd.read_excel(p)
+                else:
+                    df = pd.read_excel(p, header=1)
+                return df, rf
+            except Exception:
+                pass
+    return None, None
 
 @st.cache_data(ttl=1800)
 def load_data():
@@ -180,7 +233,7 @@ def load_data():
         source_used = "Google Sheets API (Live)"
     else:
         # Dự phòng: Đọc từ Google Sheets URL (CSV export)
-        url = st.secrets.get("SHEET_URL", "")
+        url = get_secret("SHEET_URL", "")
         try:
             if url:
                 df = pd.read_csv(url)
@@ -245,8 +298,9 @@ with col3:
     allowed_khos = ['Tất cả', 'B2B Đài Tư', 'B2B Hưng Yên']
     
     try:
-        if "rbac" in st.secrets:
-            user_role = st.secrets["rbac"].get(user_email)
+        rbac = get_secret("rbac", {})
+        if rbac and isinstance(rbac, dict):
+            user_role = rbac.get(user_email)
             if user_role == "B2B Đài Tư":
                 allowed_khos = ['B2B Đài Tư']
             elif user_role == "B2B Hưng Yên":
@@ -820,21 +874,10 @@ with tab4:
         for msg in sort_debug_msgs:
             st.write(msg)
 
-    route_files = [
-        'data chuyến Truck 7 ngày 11.09.xlsx',
-        'data chuyến cố định 7 ngày gần nhất 9.9.xlsx',
-        'data chuyến cố định 7 ngày gần nhất 3.9.xlsx',
-    ]
-    route_file_path = None
-    for rf in route_files:
-        p = os.path.join(os.path.dirname(__file__), rf)
-        if os.path.exists(p):
-            route_file_path = p
-            break
+    df_routes_raw, route_source_name = load_truck_schedule()
 
-    if route_file_path:
+    if df_routes_raw is not None and not df_routes_raw.empty:
         try:
-            df_routes_raw = pd.read_excel(route_file_path, header=1)
             
             # Check if format is stop-by-stop (like data chuyến Truck 7 ngày 11.09.xlsx)
             if 'ThuTuDiem' in df_routes_raw.columns:
@@ -992,7 +1035,7 @@ with tab4:
                 clean_html = "\n".join(l.lstrip() for l in table_html.splitlines())
                 st.markdown(clean_html, unsafe_allow_html=True)
 
-            st.caption(f"📁 Nguồn dữ liệu: `{os.path.basename(route_file_path)}`")
+            st.caption(f"📁 Nguồn dữ liệu: `{route_source_name}`")
         except Exception as e:
             st.error(f"Lỗi khi đọc file tuyến cố định: {e}")
 

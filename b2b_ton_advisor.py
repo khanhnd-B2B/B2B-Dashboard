@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
 }
 
 TRUCK_FILE = os.path.join(os.path.dirname(__file__), 'data chuyến Truck 7 ngày 11.09.xlsx')
+TRUCK_FILE_7DAYS = os.path.join(os.path.dirname(__file__), 'LichTaiUpdate7Ngay.xlsx')
 
 PREFIX_TO_PROVINCE = {
     # Miền Bắc
@@ -326,19 +327,67 @@ class B2BTonAdvisor:
             print(f"❌ Lỗi lưu cấu hình: {e}")
 
     def _load_truck_data(self):
-        if not os.path.exists(TRUCK_FILE):
-            print(f"Warning: Không tìm thấy file {TRUCK_FILE}")
+        df = None
+        source = None
+
+        # 1. Thử đọc từ Google Sheet tab LichTaiUpdate7Ngay
+        try:
+            creds = self.get_google_credentials()
+            if creds:
+                from googleapiclient.discovery import build
+                service = build('sheets', 'v4', credentials=creds)
+                res = service.spreadsheets().values().get(
+                    spreadsheetId=self.spreadsheet_id,
+                    range='LichTaiUpdate7Ngay'
+                ).execute()
+                vals = res.get('values', [])
+                if vals and len(vals) >= 2:
+                    df = pd.DataFrame(vals[1:], columns=vals[0])
+                    source = "Google Sheet (LichTaiUpdate7Ngay)"
+        except Exception:
+            pass
+
+        # 2. Thử đọc file cục bộ LichTaiUpdate7Ngay.xlsx
+        if df is None and os.path.exists(TRUCK_FILE_7DAYS):
+            try:
+                df = pd.read_excel(TRUCK_FILE_7DAYS)
+                source = "LichTaiUpdate7Ngay.xlsx"
+            except Exception:
+                pass
+
+        # 3. Dự phòng cuối: TRUCK_FILE (data chuyến Truck 7 ngày 11.09.xlsx)
+        if df is None and os.path.exists(TRUCK_FILE):
+            try:
+                df = pd.read_excel(TRUCK_FILE, header=1)
+                source = os.path.basename(TRUCK_FILE)
+            except Exception:
+                pass
+
+        if df is None:
+            print("Warning: Không tìm thấy dữ liệu lịch tải từ cả Google Sheet và file cục bộ!")
             self.df_truck = None
+            self.b2b_stop1 = None
             return
 
-        self.df_truck = pd.read_excel(TRUCK_FILE, header=1)
-        self.df_truck['GioDuKienDen_GMT7'] = pd.to_datetime(self.df_truck['GioDuKienDen_GMT7'], errors='coerce')
-        self.df_truck['HHMM'] = self.df_truck['GioDuKienDen_GMT7'].dt.strftime('%H:%M')
+        self.df_truck = df
+        self.truck_source = source
+        print(f"✅ Đã nạp thành công {len(df)} dòng lịch tải từ {source}!")
 
-        # Filter trips starting at Đài Tư or HN02, strictly excluding HY_ routes
-        stop1 = self.df_truck[self.df_truck['ThuTuDiem'] == 1]
-        valid_stop1 = stop1[stop1['TenDiem'].isin(VALID_ORIGINS)].copy()
-        self.b2b_stop1 = valid_stop1[~valid_stop1['MaTuyen'].str.upper().str.startswith('HY_')].copy()
+        # Xử lý format
+        if 'ToanBoDiemDi' in self.df_truck.columns:
+            # Format tổng hợp theo chuyến của LichTaiUpdate7Ngay
+            self.df_truck['GioDuKienBatDau_GMT7'] = pd.to_datetime(self.df_truck['GioDuKienBatDau_GMT7'], errors='coerce')
+            self.df_truck['HHMM'] = self.df_truck['GioDuKienBatDau_GMT7'].dt.strftime('%H:%M')
+            self.df_truck['TrongTai'] = pd.to_numeric(self.df_truck['TrongTai'], errors='coerce').fillna(0).astype(int)
+            valid_stop1 = self.df_truck[self.df_truck['DiemDauTien'].isin(VALID_ORIGINS)].copy()
+            self.b2b_stop1 = valid_stop1[~valid_stop1['MaTuyen'].str.upper().str.startswith('HY_')].copy()
+        elif 'ThuTuDiem' in self.df_truck.columns:
+            # Format chi tiết từng điểm dừng của file cũ
+            self.df_truck['GioDuKienDen_GMT7'] = pd.to_datetime(self.df_truck['GioDuKienDen_GMT7'], errors='coerce')
+            self.df_truck['HHMM'] = self.df_truck['GioDuKienDen_GMT7'].dt.strftime('%H:%M')
+            stop1 = self.df_truck[self.df_truck['ThuTuDiem'] == 1]
+            valid_stop1 = stop1[stop1['TenDiem'].isin(VALID_ORIGINS)].copy()
+            self.b2b_stop1 = valid_stop1[~valid_stop1['MaTuyen'].str.upper().str.startswith('HY_')].copy()
 
     def login_metabase(self, username=None, password=None):
         """Tự động đăng nhập Metabase bằng tài khoản username/password để lấy session token mới."""
@@ -559,35 +608,52 @@ class B2BTonAdvisor:
             mc = r['MaChuyen']
             mt = r['MaTuyen']
             hh = r['HHMM']
-            td = r['TenDiem']
+            td = r.get('DiemDauTien', r.get('TenDiem', ''))
             tt = r.get('TrongTai', 0)
 
-            trip_rows = self.df_truck[self.df_truck['MaChuyen'] == mc].sort_values('ThuTuDiem')
-            downstream_rows = trip_rows[trip_rows['ThuTuDiem'] > 1]
-            
-            # Extract provinces served from downstream destination stops
             provinces_served = set()
-            for _, d_row in downstream_rows.iterrows():
-                s_name = str(d_row['TenDiem']).strip()
-                s_lower = s_name.lower()
-
-                # Skip origin hubs so we don't accidentally map Hanoi local to inter-provincial trucks
-                if s_lower in ORIGIN_EXCLUDED_STOPS:
-                    continue
-
-                if 'hưng yên 01' in s_lower:
-                    if 'HN_HY' in mt.upper():
-                        provinces_served.update(['Hưng Yên', 'Nam Định', 'Ninh Bình', 'Hải Dương', 'Thái Bình', 'Hà Nam'])
-                elif 'hồ chí minh' in s_lower:
-                    provinces_served.update(['Hồ Chí Minh', 'Bình Dương', 'Long An', 'Đồng Nai'])
-                elif 'sóng thần' in s_lower:
-                    provinces_served.update(['Bình Dương', 'Hồ Chí Minh', 'Đồng Nai', 'Bình Phước'])
-                elif 'dương xá' in s_lower:
-                    provinces_served.update(['Bắc Ninh', 'Hà Nội'])
-                else:
-                    p = extract_province(s_name)
-                    if p not in ['Khác', 'Tỉnh khác']:
-                        provinces_served.add(p)
+            if 'ToanBoDiemDi' in r and pd.notna(r['ToanBoDiemDi']):
+                route_str = str(r['ToanBoDiemDi'])
+                stops = [s.strip() for s in route_str.split('→')]
+                downstream_stops = stops[1:] if len(stops) > 1 else []
+                for s_name in downstream_stops:
+                    s_lower = s_name.lower()
+                    if s_lower in ORIGIN_EXCLUDED_STOPS:
+                        continue
+                    if 'hưng yên 01' in s_lower:
+                        if 'HN_HY' in mt.upper():
+                            provinces_served.update(['Hưng Yên', 'Nam Định', 'Ninh Bình', 'Hải Dương', 'Thái Bình', 'Hà Nam'])
+                    elif 'hồ chí minh' in s_lower:
+                        provinces_served.update(['Hồ Chí Minh', 'Bình Dương', 'Long An', 'Đồng Nai'])
+                    elif 'sóng thần' in s_lower:
+                        provinces_served.update(['Bình Dương', 'Hồ Chí Minh', 'Đồng Nai', 'Bình Phước'])
+                    elif 'dương xá' in s_lower:
+                        provinces_served.update(['Bắc Ninh', 'Hà Nội'])
+                    else:
+                        p = extract_province(s_name)
+                        if p not in ['Khác', 'Tỉnh khác']:
+                            provinces_served.add(p)
+            else:
+                trip_rows = self.df_truck[self.df_truck['MaChuyen'] == mc].sort_values('ThuTuDiem')
+                downstream_rows = trip_rows[trip_rows['ThuTuDiem'] > 1]
+                for _, d_row in downstream_rows.iterrows():
+                    s_name = str(d_row['TenDiem']).strip()
+                    s_lower = s_name.lower()
+                    if s_lower in ORIGIN_EXCLUDED_STOPS:
+                        continue
+                    if 'hưng yên 01' in s_lower:
+                        if 'HN_HY' in mt.upper():
+                            provinces_served.update(['Hưng Yên', 'Nam Định', 'Ninh Bình', 'Hải Dương', 'Thái Bình', 'Hà Nam'])
+                    elif 'hồ chí minh' in s_lower:
+                        provinces_served.update(['Hồ Chí Minh', 'Bình Dương', 'Long An', 'Đồng Nai'])
+                    elif 'sóng thần' in s_lower:
+                        provinces_served.update(['Bình Dương', 'Hồ Chí Minh', 'Đồng Nai', 'Bình Phước'])
+                    elif 'dương xá' in s_lower:
+                        provinces_served.update(['Bắc Ninh', 'Hà Nội'])
+                    else:
+                        p = extract_province(s_name)
+                        if p not in ['Khác', 'Tỉnh khác']:
+                            provinces_served.add(p)
 
             if provinces_served:
                 trips_list.append({
@@ -738,6 +804,11 @@ class B2BTonAdvisor:
             if send_tele:
                 self.send_telegram(err_msg, chat_id=chat_dst, thread_id=thread_dst)
             return None
+
+        # Luôn làm mới lịch tải 7 ngày nếu chưa nạp hoặc đã quá 1 giờ
+        if self.df_truck is None or getattr(self, '_last_truck_load_time', 0) < time.time() - 3600:
+            self._load_truck_data()
+            self._last_truck_load_time = time.time()
 
         # Extract KG column (support both comma and dot decimal separators)
         for col in ['KL_TinhCuoc_Kg', 'CanNangThucTe_Kg', 'CanNangQuyDoi_Kg']:
