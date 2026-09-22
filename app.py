@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 pd.set_option("styler.render.max_elements", 5000000)
 
-st.set_page_config(page_title="B2B DELIVERY DASHBOARD", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Báo cáo B2B Đài Tư - Hưng Yên", layout="wide", initial_sidebar_state="expanded")
 
 def get_secret(key, default=""):
     try:
@@ -266,7 +266,7 @@ if df_raw.empty:
     st.error(f"Lỗi tải dữ liệu: {master_file_path}")
     st.stop()
 
-st.title("B2B DELIVERY REPORTING DASHBOARD")
+st.title("Báo cáo B2B Đài Tư - Hưng Yên")
 
 # Show data source info + reload button
 _max_date_loaded = df_raw['NgayNhap'].dropna().max().date() if 'NgayNhap' in df_raw.columns else 'N/A'
@@ -388,7 +388,120 @@ def display_dataframe(df_to_show):
     else:
         st.dataframe(df_to_show.style.format("{:,.0f}", na_rep=""), use_container_width=True)
 
-tab1, tab2, tab3, tab4 = st.tabs(["1. SẢN LƯỢNG NHẬP KHO", "2. ONTIME XUẤT HÀNG", "3. PHÂN TÍCH SORT CODE", "4. SƠ ĐỒ MẠNG LƯỚI (MINDMAP)"])
+def compute_growth_and_client_analytics(df_src, freq_code='D'):
+    """
+    Tính toán biến động theo Ngày (D), Tuần (W), Tháng (M) về lượng đơn, khối lượng và khách hàng.
+    """
+    if df_src is None or df_src.empty or 'NgayNhap' not in df_src.columns:
+        return None, None, []
+
+    df_data = df_src.dropna(subset=['NgayNhap']).copy()
+    if df_data.empty:
+        return None, None, []
+
+    if freq_code == 'D':
+        df_data['Period_Calc'] = df_data['NgayNhap'].dt.to_period('D').dt.start_time
+        df_data['Period_Label'] = df_data['NgayNhap'].dt.strftime('%d/%m/%Y')
+    elif freq_code == 'W':
+        df_data['Period_Calc'] = df_data['NgayNhap'].dt.to_period('W').dt.start_time
+        df_data['Period_Label'] = df_data['NgayNhap'].dt.strftime('Tuần %W/%Y')
+    else: # M
+        df_data['Period_Calc'] = df_data['NgayNhap'].dt.to_period('M').dt.start_time
+        df_data['Period_Label'] = df_data['NgayNhap'].dt.strftime('Tháng %m/%Y')
+
+    periods = sorted(df_data['Period_Calc'].unique())
+    if not periods:
+        return None, None, []
+
+    client_first_seen = df_data.groupby('ClientName')['Period_Calc'].min().to_dict()
+
+    summary_rows = []
+    for p in periods:
+        sub = df_data[df_data['Period_Calc'] == p]
+        lbl = sub['Period_Label'].iloc[0]
+        n_orders = sub['MaDonGoc'].nunique() if 'MaDonGoc' in sub.columns else len(sub)
+        total_kg = sub['KhoiLuongKG'].sum() if 'KhoiLuongKG' in sub.columns else 0.0
+        active_clients = [c for c in sub['ClientName'].dropna().unique() if str(c).strip() and str(c).lower() not in ['nan', 'none', 'chưa xác định']]
+        n_clients = len(active_clients)
+        new_clients = [c for c in active_clients if client_first_seen.get(c) == p]
+        n_new = len(new_clients)
+
+        summary_rows.append({
+            'Period_Calc': p,
+            'Kỳ': lbl,
+            'Số đơn': n_orders,
+            'Khối lượng (kg)': total_kg,
+            'Số KH hoạt động': n_clients,
+            'Số KH mới': n_new,
+            'Đơn TB / KH': round(n_orders / n_clients, 1) if n_clients > 0 else 0,
+            'KG TB / KH': round(total_kg / n_clients, 1) if n_clients > 0 else 0,
+        })
+
+    df_summary = pd.DataFrame(summary_rows)
+
+    df_summary['Đơn kỳ trước'] = df_summary['Số đơn'].shift(1)
+    df_summary['Thay đổi đơn'] = df_summary['Số đơn'] - df_summary['Đơn kỳ trước']
+    df_summary['% Tăng đơn'] = (df_summary['Thay đổi đơn'] / df_summary['Đơn kỳ trước'] * 100).round(1)
+
+    df_summary['KG kỳ trước'] = df_summary['Khối lượng (kg)'].shift(1)
+    df_summary['Thay đổi KG'] = df_summary['Khối lượng (kg)'] - df_summary['KG kỳ trước']
+    df_summary['% Tăng KG'] = (df_summary['Thay đổi KG'] / df_summary['KG kỳ trước'] * 100).round(1)
+
+    df_summary['KH kỳ trước'] = df_summary['Số KH hoạt động'].shift(1)
+    df_summary['Thay đổi KH'] = df_summary['Số KH hoạt động'] - df_summary['KH kỳ trước']
+    df_summary['% Tăng KH'] = (df_summary['Thay đổi KH'] / df_summary['KH kỳ trước'] * 100).round(1)
+
+    df_client_comp = pd.DataFrame()
+    if len(periods) >= 2:
+        p_latest = periods[-1]
+        p_prev = periods[-2]
+
+        df_lat = df_data[df_data['Period_Calc'] == p_latest]
+        df_prv = df_data[df_data['Period_Calc'] == p_prev]
+
+        c_lat = df_lat.groupby('ClientName').agg(
+            Đơn_kỳ_này=('MaDonGoc', 'nunique'),
+            KG_kỳ_này=('KhoiLuongKG', 'sum')
+        ).reset_index()
+
+        c_prv = df_prv.groupby('ClientName').agg(
+            Đơn_kỳ_trước=('MaDonGoc', 'nunique'),
+            KG_kỳ_trước=('KhoiLuongKG', 'sum')
+        ).reset_index()
+
+        m_cli = pd.merge(c_lat, c_prv, on='ClientName', how='outer').fillna(0)
+        m_cli = m_cli[~m_cli['ClientName'].str.lower().isin(['nan', 'none', 'chưa xác định', ''])]
+        m_cli['Thay đổi đơn'] = m_cli['Đơn_kỳ_này'] - m_cli['Đơn_kỳ_trước']
+        m_cli['% Tăng đơn'] = m_cli.apply(
+            lambda r: ((r['Đơn_kỳ_này'] - r['Đơn_kỳ_trước']) / r['Đơn_kỳ_trước'] * 100) if r['Đơn_kỳ_trước'] > 0 else (100.0 if r['Đơn_kỳ_này'] > 0 else 0.0),
+            axis=1
+        ).round(1)
+        m_cli['Thay đổi KG'] = m_cli['KG_kỳ_này'] - m_cli['KG_kỳ_trước']
+
+        def get_status(r):
+            if r['Đơn_kỳ_trước'] == 0 and r['Đơn_kỳ_này'] > 0:
+                return 'Mới xuất hiện'
+            elif r['Đơn_kỳ_trước'] > 0 and r['Đơn_kỳ_này'] == 0:
+                return 'Ngừng gửi hàng'
+            elif r['Thay đổi đơn'] > 0:
+                return 'Tăng trưởng'
+            elif r['Thay đổi đơn'] < 0:
+                return 'Sụt giảm'
+            else:
+                return 'Không đổi'
+
+        m_cli['Trạng thái'] = m_cli.apply(get_status, axis=1)
+        df_client_comp = m_cli
+
+    return df_summary, df_client_comp, periods
+
+tab1, tab_growth, tab2, tab3, tab4 = st.tabs([
+    "1. SẢN LƯỢNG NHẬP KHO",
+    "2. BIẾN ĐỘNG & TĂNG TRƯỞNG (ĐƠN & KH)",
+    "3. ONTIME XUẤT HÀNG",
+    "4. PHÂN TÍCH SORT CODE",
+    "5. SƠ ĐỒ MẠNG LƯỚI (MINDMAP)"
+])
 
 # ==================== TAB 1 ====================
 with tab1:
@@ -445,7 +558,31 @@ with tab1:
                 f"{overview_df.loc['Số đơn nhập về', col]:,.0f}".replace(',', '.'),
                 f"{overview_df.loc['Số KG nhập về', col]:,.0f}".replace(',', '.')
             ]
-        return overview_df
+    # Quick KPI cards so với kỳ trước
+    df_quick_kpi, _, _ = compute_growth_and_client_analytics(df_filtered, freq)
+    if df_quick_kpi is not None and not df_quick_kpi.empty:
+        latest_k = df_quick_kpi.iloc[-1]
+        freq_lbl = "ngày" if freq == 'D' else ("tuần" if freq == 'W' else "tháng")
+        st.markdown(f"**⚡ Chỉ số kỳ gần nhất ({latest_k['Kỳ']}) so với {freq_lbl} trước:**")
+        qc1, qc2, qc3, qc4 = st.columns(4)
+
+        diff_d = latest_k['Thay đổi đơn']
+        pct_d = latest_k['% Tăng đơn']
+        delta_d = f"{diff_d:+,.0f} đơn ({pct_d:+.1f}%)" if pd.notna(diff_d) else None
+        qc1.metric("📦 Tổng đơn", f"{latest_k['Số đơn']:,.0f}", delta_d)
+
+        diff_kg = latest_k['Thay đổi KG']
+        pct_kg = latest_k['% Tăng KG']
+        delta_kg = f"{diff_kg:+,.0f} kg ({pct_kg:+.1f}%)" if pd.notna(diff_kg) else None
+        qc2.metric("⚖️ Khối lượng", f"{latest_k['Khối lượng (kg)']:,.0f} kg", delta_kg)
+
+        diff_kh = latest_k['Thay đổi KH']
+        pct_kh = latest_k['% Tăng KH']
+        delta_kh = f"{diff_kh:+,.0f} KH ({pct_kh:+.1f}%)" if pd.notna(diff_kh) else None
+        qc3.metric("👥 KH hoạt động", f"{latest_k['Số KH hoạt động']:,.0f} KH", delta_kh)
+
+        qc4.metric("🆕 KH mới phát sinh", f"{latest_k['Số KH mới']:,.0f} KH", f"Đơn TB: {latest_k['Đơn TB / KH']:.1f}/KH")
+        st.markdown("---")
 
     st.markdown("<h3 style='color: #004b8b; text-decoration: underline;'>A. Overview</h3>", unsafe_allow_html=True)
     
@@ -637,7 +774,317 @@ with tab1:
     with sub3:
         render_warehouse_tab(df_hungyen, "B2B HƯNG YÊN")
 
-# ==================== TAB 2 ====================
+# ==================== TAB 2: BIẾN ĐỘNG & TĂNG TRƯỞNG (ĐƠN & KHÁCH HÀNG) ====================
+with tab_growth:
+    st.header("📈 PHÂN TÍCH BIẾN ĐỘNG THEO NGÀY / TUẦN / THÁNG (LƯỢNG ĐƠN & KHÁCH HÀNG)")
+    st.markdown("Theo dõi tốc độ tăng trưởng, biến động sản lượng và cơ cấu khách hàng qua từng chu kỳ thời gian.")
+
+    # Bộ lọc chu kỳ phân tích
+    col_g1, col_g2 = st.columns([3, 2])
+    with col_g1:
+        growth_freq_label = st.radio(
+            "⏱️ Chu kỳ phân tích biến động:",
+            options=["Ngày (DoD - Day over Day)", "Tuần (WoW - Week over Week)", "Tháng (MoM - Month over Month)"],
+            horizontal=True,
+            index=0 if freq == 'D' else (1 if freq == 'W' else 2)
+        )
+    with col_g2:
+        growth_metric_view = st.radio("📊 Chỉ số trọng tâm:", ["Số đơn", "Khối lượng (kg)"], horizontal=True, key="growth_metric_view")
+
+    g_freq_code = 'D' if 'Ngày' in growth_freq_label else ('W' if 'Tuần' in growth_freq_label else 'M')
+    g_freq_unit = 'ngày' if g_freq_code == 'D' else ('tuần' if g_freq_code == 'W' else 'tháng')
+
+    # Tính toán dữ liệu biến động
+    df_growth_summary, df_client_changes, all_periods = compute_growth_and_client_analytics(df_filtered, g_freq_code)
+
+    if df_growth_summary is None or df_growth_summary.empty:
+        st.info("Không có đủ dữ liệu để tính toán biến động theo chu kỳ đã chọn.")
+    else:
+        # 1. KPI CARDS SO VỚI KỲ TRƯỚC
+        latest_row = df_growth_summary.iloc[-1]
+        latest_period_name = latest_row['Kỳ']
+
+        st.markdown(f"### 🎯 Chỉ số kỳ gần nhất: **{latest_period_name}** *(so với {g_freq_unit} liền trước)*")
+        kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5 = st.columns(5)
+
+        # Đơn
+        don_val = latest_row['Số đơn']
+        don_diff = latest_row['Thay đổi đơn']
+        don_pct = latest_row['% Tăng đơn']
+        don_delta_str = f"{don_diff:+,.0f} đơn ({don_pct:+.1f}%)" if pd.notna(don_diff) else "Kỳ đầu tiên"
+        kpi_c1.metric("📦 Tổng đơn", f"{don_val:,.0f}", don_delta_str)
+
+        # KG
+        kg_val = latest_row['Khối lượng (kg)']
+        kg_diff = latest_row['Thay đổi KG']
+        kg_pct = latest_row['% Tăng KG']
+        kg_delta_str = f"{kg_diff:+,.0f} kg ({kg_pct:+.1f}%)" if pd.notna(kg_diff) else "Kỳ đầu tiên"
+        kpi_c2.metric("⚖️ Khối lượng", f"{kg_val:,.0f} kg", kg_delta_str)
+
+        # KH hoạt động
+        kh_val = latest_row['Số KH hoạt động']
+        kh_diff = latest_row['Thay đổi KH']
+        kh_pct = latest_row['% Tăng KH']
+        kh_delta_str = f"{kh_diff:+,.0f} KH ({kh_pct:+.1f}%)" if pd.notna(kh_diff) else "Kỳ đầu tiên"
+        kpi_c3.metric("👥 KH hoạt động", f"{kh_val:,.0f} KH", kh_delta_str)
+
+        # KH mới
+        new_kh_val = latest_row['Số KH mới']
+        kpi_c4.metric("🆕 KH mới phát sinh", f"{new_kh_val:,.0f} KH")
+
+        # Đơn TB / KH
+        tb_val = latest_row['Đơn TB / KH']
+        kpi_c5.metric("📊 Đơn TB / KH", f"{tb_val:,.1f} đơn")
+
+        st.markdown("---")
+
+        # 2. BIỂU ĐỒ XU HƯỚNG VÀ TỐC ĐỘ TĂNG TRƯỞNG
+        st.markdown("### 📊 Biểu đồ Xu hướng & Tốc độ Tăng trưởng")
+        
+        max_show = 30 if g_freq_code == 'D' else (16 if g_freq_code == 'W' else 12)
+        df_chart_data = df_growth_summary.tail(max_show).copy()
+
+        chart_tab1, chart_tab2, chart_tab3 = st.tabs([
+            "📈 Xu hướng Sản lượng & Tăng trưởng (%)",
+            "👥 Biến động Số lượng Khách hàng",
+            "🏭 So sánh Tăng trưởng theo Kho (Đài Tư vs Hưng Yên)"
+        ])
+
+        with chart_tab1:
+            col_ch1, col_ch2 = st.columns(2)
+            with col_ch1:
+                y_measure = 'Số đơn' if growth_metric_view == 'Số đơn' else 'Khối lượng (kg)'
+                fig_prod = px.bar(
+                    df_chart_data,
+                    x='Kỳ',
+                    y=y_measure,
+                    text_auto='.2s',
+                    title=f"Sản lượng {y_measure.lower()} qua các {g_freq_unit}",
+                    color_discrete_sequence=['#004b8b']
+                )
+                fig_prod.update_traces(textposition='outside')
+                fig_prod.update_layout(xaxis_title="Thời gian", yaxis_title=y_measure)
+                st.plotly_chart(fig_prod, use_container_width=True)
+
+            with col_ch2:
+                pct_col = '% Tăng đơn' if growth_metric_view == 'Số đơn' else '% Tăng KG'
+                df_growth_clean = df_chart_data.dropna(subset=[pct_col]).copy()
+                df_growth_clean['Màu'] = df_growth_clean[pct_col].apply(lambda x: 'Tăng trưởng (+)' if x >= 0 else 'Sụt giảm (-)')
+                fig_pct = px.bar(
+                    df_growth_clean,
+                    x='Kỳ',
+                    y=pct_col,
+                    color='Màu',
+                    color_discrete_map={'Tăng trưởng (+)': '#2ca02c', 'Sụt giảm (-)': '#d62728'},
+                    title=f"Tốc độ tăng trưởng % ({pct_col}) so với kỳ trước",
+                    text_auto='.1f'
+                )
+                fig_pct.update_traces(textposition='outside')
+                fig_pct.add_hline(y=0, line_dash="dash", line_color="gray")
+                fig_pct.update_layout(xaxis_title="Thời gian", yaxis_title="% Thay đổi")
+                st.plotly_chart(fig_pct, use_container_width=True)
+
+        with chart_tab2:
+            col_kh1, col_kh2 = st.columns(2)
+            with col_kh1:
+                fig_kh = px.line(
+                    df_chart_data,
+                    x='Kỳ',
+                    y='Số KH hoạt động',
+                    markers=True,
+                    title=f"Số lượng khách hàng gửi hàng theo {g_freq_unit}",
+                    color_discrete_sequence=['#ff7f0e']
+                )
+                fig_kh.update_layout(xaxis_title="Thời gian", yaxis_title="Số khách hàng")
+                st.plotly_chart(fig_kh, use_container_width=True)
+            with col_kh2:
+                fig_new_kh = px.bar(
+                    df_chart_data,
+                    x='Kỳ',
+                    y='Số KH mới',
+                    text_auto=True,
+                    title=f"Số lượng khách hàng mới xuất hiện theo {g_freq_unit}",
+                    color_discrete_sequence=['#17becf']
+                )
+                fig_new_kh.update_traces(textposition='outside')
+                fig_new_kh.update_layout(xaxis_title="Thời gian", yaxis_title="Số KH mới")
+                st.plotly_chart(fig_new_kh, use_container_width=True)
+
+        with chart_tab3:
+            if 'KhoNhap' in df_filtered.columns:
+                df_wh_growth = df_filtered.copy()
+                if g_freq_code == 'D':
+                    df_wh_growth['Period_Calc'] = df_wh_growth['NgayNhap'].dt.to_period('D').dt.start_time
+                    df_wh_growth['Period_Label'] = df_wh_growth['NgayNhap'].dt.strftime('%d/%m/%Y')
+                elif g_freq_code == 'W':
+                    df_wh_growth['Period_Calc'] = df_wh_growth['NgayNhap'].dt.to_period('W').dt.start_time
+                    df_wh_growth['Period_Label'] = df_wh_growth['NgayNhap'].dt.strftime('Tuần %W/%Y')
+                else:
+                    df_wh_growth['Period_Calc'] = df_wh_growth['NgayNhap'].dt.to_period('M').dt.start_time
+                    df_wh_growth['Period_Label'] = df_wh_growth['NgayNhap'].dt.strftime('Tháng %m/%Y')
+
+                df_wh_growth['Kho'] = df_wh_growth['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
+                df_wh_growth = df_wh_growth[df_wh_growth['Kho'].isin(['Đài Tư', 'Hưng Yên'])]
+
+                wh_grouped = df_wh_growth.groupby(['Period_Calc', 'Period_Label', 'Kho']).agg(
+                    Số_đơn=('MaDonGoc', 'nunique'),
+                    Tổng_KG=('KhoiLuongKG', 'sum'),
+                    Số_KH=('ClientName', 'nunique')
+                ).reset_index().sort_values('Period_Calc')
+
+                recent_wh_pers = sorted(wh_grouped['Period_Calc'].unique())[-max_show:]
+                wh_grouped = wh_grouped[wh_grouped['Period_Calc'].isin(recent_wh_pers)]
+
+                if not wh_grouped.empty:
+                    y_wh_metric = 'Số_đơn' if growth_metric_view == 'Số đơn' else 'Tổng_KG'
+                    fig_wh_comp = px.line(
+                        wh_grouped,
+                        x='Period_Label',
+                        y=y_wh_metric,
+                        color='Kho',
+                        markers=True,
+                        title=f"So sánh sản lượng {y_wh_metric.replace('_', ' ').lower()} giữa Đài Tư và Hưng Yên",
+                        custom_data=['Số_đơn', 'Tổng_KG', 'Số_KH']
+                    )
+                    fig_wh_comp.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Số đơn: %{customdata[0]:,.0f}<br>Tổng KG: %{customdata[1]:,.0f}<br>Số KH: %{customdata[2]}")
+                    st.plotly_chart(fig_wh_comp, use_container_width=True)
+
+        st.markdown("---")
+
+        # 3. PHÂN TÍCH CHI TIẾT KHÁCH HÀNG (KỲ NÀY VS KỲ TRƯỚC)
+        st.markdown(f"### 👥 Phân Tích Biến Động Khách Hàng (Kỳ **{latest_period_name}** vs Kỳ Trước)")
+
+        if df_client_changes is not None and not df_client_changes.empty:
+            c_stat1, c_stat2, c_stat3, c_stat4 = st.columns(4)
+            n_growing = (df_client_changes['Trạng thái'] == 'Tăng trưởng').sum()
+            n_declining = (df_client_changes['Trạng thái'] == 'Sụt giảm').sum()
+            n_new_c = (df_client_changes['Trạng thái'] == 'Mới xuất hiện').sum()
+            n_churn = (df_client_changes['Trạng thái'] == 'Ngừng gửi hàng').sum()
+
+            c_stat1.metric("🚀 KH Tăng trưởng", f"{n_growing} KH")
+            c_stat2.metric("🔻 KH Sụt giảm", f"{n_declining} KH")
+            c_stat3.metric("🆕 KH Mới xuất hiện", f"{n_new_c} KH")
+            c_stat4.metric("⚠️ KH Tạm ngừng gửi", f"{n_churn} KH")
+
+            client_tab1, client_tab2, client_tab3, client_tab4, client_tab5 = st.tabs([
+                "🚀 Top KH Tăng trưởng mạnh",
+                "🔻 Top KH Sụt giảm nhiều",
+                "🆕 Danh sách KH Mới",
+                "⚠️ Danh sách KH Tạm ngừng",
+                "📋 Toàn bộ Khách hàng"
+            ])
+
+            with client_tab1:
+                df_grow = df_client_changes[df_client_changes['Trạng thái'] == 'Tăng trưởng'].sort_values('Thay đổi đơn', ascending=False)
+                if not df_grow.empty:
+                    st.markdown("**Top khách hàng tăng trưởng lượng đơn lớn nhất:**")
+                    st.dataframe(
+                        df_grow[['ClientName', 'Đơn_kỳ_trước', 'Đơn_kỳ_này', 'Thay đổi đơn', '% Tăng đơn', 'Thay đổi KG']]
+                        .rename(columns={'ClientName': 'Tên Khách Hàng'})
+                        .style.format({
+                            'Đơn_kỳ_trước': '{:,.0f}',
+                            'Đơn_kỳ_này': '{:,.0f}',
+                            'Thay đổi đơn': '{:+,.0f}',
+                            '% Tăng đơn': '{:+.1f}%',
+                            'Thay đổi KG': '{:+,.0f}'
+                        }),
+                        use_container_width=True
+                    )
+                else:
+                    st.info("Không có khách hàng nào tăng trưởng trong kỳ này.")
+
+            with client_tab2:
+                df_drop = df_client_changes[df_client_changes['Trạng thái'] == 'Sụt giảm'].sort_values('Thay đổi đơn')
+                if not df_drop.empty:
+                    st.markdown("⚠️ **Khách hàng có lượng đơn sụt giảm nhiều nhất (Cần theo dõi & CSKH):**")
+                    st.dataframe(
+                        df_drop[['ClientName', 'Đơn_kỳ_trước', 'Đơn_kỳ_này', 'Thay đổi đơn', '% Tăng đơn', 'Thay đổi KG']]
+                        .rename(columns={'ClientName': 'Tên Khách Hàng'})
+                        .style.format({
+                            'Đơn_kỳ_trước': '{:,.0f}',
+                            'Đơn_kỳ_này': '{:,.0f}',
+                            'Thay đổi đơn': '{:+,.0f}',
+                            '% Tăng đơn': '{:+.1f}%',
+                            'Thay đổi KG': '{:+,.0f}'
+                        }),
+                        use_container_width=True
+                    )
+                else:
+                    st.info("Không có khách hàng nào bị sụt giảm trong kỳ này.")
+
+            with client_tab3:
+                df_new_list = df_client_changes[df_client_changes['Trạng thái'] == 'Mới xuất hiện'].sort_values('Đơn_kỳ_này', ascending=False)
+                if not df_new_list.empty:
+                    st.markdown("**Khách hàng mới phát sinh đơn trong kỳ:**")
+                    st.dataframe(
+                        df_new_list[['ClientName', 'Đơn_kỳ_này', 'KG_kỳ_này']]
+                        .rename(columns={'ClientName': 'Tên Khách Hàng', 'Đơn_kỳ_này': 'Số đơn', 'KG_kỳ_này': 'Khối lượng (KG)'})
+                        .style.format({'Số đơn': '{:,.0f}', 'Khối lượng (KG)': '{:,.0f}'}),
+                        use_container_width=True
+                    )
+                else:
+                    st.info("Không có khách hàng mới nào trong kỳ này.")
+
+            with client_tab4:
+                df_churn_list = df_client_changes[df_client_changes['Trạng thái'] == 'Ngừng gửi hàng'].sort_values('Đơn_kỳ_trước', ascending=False)
+                if not df_churn_list.empty:
+                    st.markdown("⚠️ **Khách hàng có gửi kỳ trước nhưng kỳ này chưa có đơn:**")
+                    st.dataframe(
+                        df_churn_list[['ClientName', 'Đơn_kỳ_trước', 'KG_kỳ_trước']]
+                        .rename(columns={'ClientName': 'Tên Khách Hàng', 'Đơn_kỳ_trước': 'Số đơn kỳ trước', 'KG_kỳ_trước': 'Khối lượng kỳ trước (KG)'})
+                        .style.format({'Số đơn kỳ trước': '{:,.0f}', 'Khối lượng kỳ trước (KG)': '{:,.0f}'}),
+                        use_container_width=True
+                    )
+                else:
+                    st.info("Không có khách hàng nào ngừng gửi hàng.")
+
+            with client_tab5:
+                status_filter = st.selectbox("Lọc theo trạng thái:", ["Tất cả", "Tăng trưởng", "Sụt giảm", "Mới xuất hiện", "Ngừng gửi hàng", "Không đổi"])
+                df_all_view = df_client_changes if status_filter == "Tất cả" else df_client_changes[df_client_changes['Trạng thái'] == status_filter]
+                st.dataframe(
+                    df_all_view[['ClientName', 'Trạng thái', 'Đơn_kỳ_trước', 'Đơn_kỳ_này', 'Thay đổi đơn', '% Tăng đơn', 'KG_kỳ_trước', 'KG_kỳ_này', 'Thay đổi KG']]
+                    .rename(columns={'ClientName': 'Tên Khách Hàng'})
+                    .style.format({
+                        'Đơn_kỳ_trước': '{:,.0f}',
+                        'Đơn_kỳ_này': '{:,.0f}',
+                        'Thay đổi đơn': '{:+,.0f}',
+                        '% Tăng đơn': '{:+.1f}%',
+                        'KG_kỳ_trước': '{:,.0f}',
+                        'KG_kỳ_này': '{:,.0f}',
+                        'Thay đổi KG': '{:+,.0f}'
+                    }),
+                    use_container_width=True
+                )
+        else:
+            st.info("Cần ít nhất 2 kỳ thời gian để so sánh biến động khách hàng.")
+
+        st.markdown("---")
+
+        # 4. BẢNG MA TRẬN TỔNG HỢP CÁC KỲ
+        st.markdown(f"### 📋 Bảng Lịch Sử Biến Động Theo {growth_freq_label.split('(')[0].strip()}")
+        df_display_matrix = df_growth_summary.sort_values('Period_Calc', ascending=False).drop(columns=['Period_Calc']).copy()
+        st.dataframe(
+            df_display_matrix.style.format({
+                'Số đơn': '{:,.0f}',
+                'Đơn kỳ trước': '{:,.0f}',
+                'Thay đổi đơn': '{:+,.0f}',
+                '% Tăng đơn': '{:+.1f}%',
+                'Khối lượng (kg)': '{:,.0f}',
+                'KG kỳ trước': '{:,.0f}',
+                'Thay đổi KG': '{:+,.0f}',
+                '% Tăng KG': '{:+.1f}%',
+                'Số KH hoạt động': '{:,.0f}',
+                'KH kỳ trước': '{:,.0f}',
+                'Thay đổi KH': '{:+,.0f}',
+                '% Tăng KH': '{:+.1f}%',
+                'Số KH mới': '{:,.0f}',
+                'Đơn TB / KH': '{:,.1f}',
+                'KG TB / KH': '{:,.1f}'
+            }, na_rep="-"),
+            use_container_width=True
+        )
+
+# ==================== TAB 3: ONTIME XUẤT HÀNG ====================
 with tab2:
     st.header("BÁO CÁO ONTIME XUẤT HÀNG")
     
