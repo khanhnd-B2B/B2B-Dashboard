@@ -558,6 +558,8 @@ with tab1:
                 f"{overview_df.loc['Số đơn nhập về', col]:,.0f}".replace(',', '.'),
                 f"{overview_df.loc['Số KG nhập về', col]:,.0f}".replace(',', '.')
             ]
+        return overview_df
+
     # Quick KPI cards so với kỳ trước
     df_quick_kpi, _, _ = compute_growth_and_client_analytics(df_filtered, freq)
     if df_quick_kpi is not None and not df_quick_kpi.empty:
