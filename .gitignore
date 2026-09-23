@@ -1,6 +1,7 @@
 ~$*
 *.xlsx
 !data chuyến Truck 7 ngày 11.09.xlsx
+!LichTaiUpdate7Ngay.xlsx
 __pycache__/
 b2b_network.db
 

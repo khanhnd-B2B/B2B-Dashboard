@@ -17,56 +17,87 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
 print(f'[{datetime.datetime.now()}] Bat dau keo du lieu tu Google Sheets API (Tab {RANGE_NAME})...')
 
-try:
-    creds = None
-    env_token = os.environ.get('GOOGLE_TOKEN')
-    if env_token:
-        try:
-            import base64
-            try:
-                token_data = json.loads(env_token)
-            except Exception:
-                token_data = json.loads(base64.b64decode(env_token).decode('utf-8'))
-            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
-            print("Đã nạp credentials từ biến môi trường GOOGLE_TOKEN.")
-        except Exception as e:
-            print(f"Lỗi đọc GOOGLE_TOKEN từ môi trường: {e}")
-
-    # 2. Đọc từ advisor_config.json đã lưu trong Git (google_token_b64)
-    if not creds and os.path.exists('advisor_config.json'):
+def get_google_service():
+    sources = []
+    
+    # 1. advisor_config.json (google_token_b64) - Nguồn ưu tiên vì luôn được đồng bộ trong Git
+    if os.path.exists('advisor_config.json'):
         try:
             import base64
             with open('advisor_config.json', 'r', encoding='utf-8') as f:
                 cfg = json.load(f)
             b64_token = cfg.get('google_token_b64')
             if b64_token:
-                token_data = json.loads(base64.b64decode(b64_token).decode('utf-8'))
-                creds = Credentials.from_authorized_user_info(token_data, SCOPES)
-                print("Đã nạp credentials từ advisor_config.json (google_token_b64).")
+                tdata = json.loads(base64.b64decode(b64_token).decode('utf-8'))
+                sources.append(('advisor_config.json (google_token_b64)', tdata))
         except Exception as e:
             print(f"Lỗi đọc advisor_config.json: {e}")
 
-    # 3. Đọc từ token.json
-    if not creds and os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-        print("Đã nạp credentials từ file token.json.")
+    # 2. token.json
+    if os.path.exists('token.json'):
+        try:
+            with open('token.json', 'r', encoding='utf-8') as f:
+                sources.append(('token.json', json.load(f)))
+        except Exception as e:
+            print(f"Lỗi đọc token.json: {e}")
 
-    if not creds:
-        print('ERROR: Không tìm thấy xác thực Google (token.json, advisor_config.json hoặc biến GOOGLE_TOKEN).')
+    # 3. Biến môi trường GOOGLE_TOKEN
+    env_token = os.environ.get('GOOGLE_TOKEN')
+    if env_token:
+        try:
+            import base64
+            try:
+                tdata = json.loads(env_token)
+            except Exception:
+                tdata = json.loads(base64.b64decode(env_token).decode('utf-8'))
+            sources.append(('GOOGLE_TOKEN env', tdata))
+        except Exception as e:
+            print(f"Lỗi đọc GOOGLE_TOKEN env: {e}")
+
+    if not sources:
+        print('ERROR: Không tìm thấy bất kỳ nguồn xác thực Google nào (advisor_config.json, token.json hoặc GOOGLE_TOKEN).')
+        return None
+
+    for name, tdata in sources:
+        try:
+            creds = Credentials.from_authorized_user_info(tdata, SCOPES)
+            if creds.expired and creds.refresh_token:
+                print(f"Token từ {name} đã hết hạn, đang tự động làm mới...")
+                creds.refresh(Request())
+                print(f"✅ Làm mới token từ {name} thành công!")
+                
+                # Lưu lại token mới vào advisor_config.json để duy trì token tươi
+                try:
+                    import base64
+                    with open('advisor_config.json', 'r', encoding='utf-8') as f:
+                        cfg = json.load(f)
+                    cfg['google_token_b64'] = base64.b64encode(creds.to_json().encode('utf-8')).decode('utf-8')
+                    with open('advisor_config.json', 'w', encoding='utf-8') as f:
+                        json.dump(cfg, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+                try:
+                    with open('token.json', 'w', encoding='utf-8') as f:
+                        f.write(creds.to_json())
+                except Exception:
+                    pass
+
+            service = build('sheets', 'v4', credentials=creds)
+            # Thử gọi kiểm tra quyền truy cập Sheet
+            service.spreadsheets().get(spreadsheetId=SPREADSHEET_ID, fields='spreadsheetId').execute()
+            print(f"✅ Kết nối Google Sheets API thành công từ nguồn: {name}!")
+            return service
+        except Exception as e:
+            print(f"⚠️ Nguồn xác thực {name} không thành công ({e}). Đang thử nguồn dự phòng tiếp theo...")
+
+    return None
+
+try:
+    service = get_google_service()
+    if not service:
+        print('❌ Không thể kết nối Google Sheets bằng bất kỳ nguồn xác thực nào!')
         sys.exit(1)
 
-    if creds.expired and creds.refresh_token:
-        print("Token đã hết hạn, đang tự động làm mới qua refresh_token...")
-        creds.refresh(Request())
-        if os.path.exists('token.json'):
-            try:
-                with open('token.json', 'w') as token:
-                    token.write(creds.to_json())
-                print("Đã cập nhật token mới vào token.json.")
-            except Exception:
-                pass
-
-    service = build('sheets', 'v4', credentials=creds)
     sheet = service.spreadsheets()
 
     result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME).execute()
@@ -94,6 +125,22 @@ try:
 
     df_combined.to_excel(MASTER_FILE, index=False)
     print(f'✅ Cập nhật thành công vào {MASTER_FILE}!')
+
+    # 2. Cập nhật dữ liệu lịch tải 7 ngày từ tab LichTaiUpdate7Ngay
+    TRUCK_RANGE = 'LichTaiUpdate7Ngay'
+    TRUCK_FILE = 'LichTaiUpdate7Ngay.xlsx'
+    print(f'[{datetime.datetime.now()}] Đang kéo dữ liệu lịch tải 7 ngày (Tab {TRUCK_RANGE})...')
+    try:
+        result_truck = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=TRUCK_RANGE).execute()
+        values_truck = result_truck.get('values', [])
+        if values_truck and len(values_truck) >= 2:
+            df_truck = pd.DataFrame(values_truck[1:], columns=values_truck[0])
+            df_truck.to_excel(TRUCK_FILE, index=False)
+            print(f'✅ Cập nhật thành công {len(df_truck)} chuyến lịch tải 7 ngày vào {TRUCK_FILE}!')
+        else:
+            print(f'⚠️ Tab {TRUCK_RANGE} rỗng hoặc không có dữ liệu.')
+    except Exception as e_truck:
+        print(f'⚠️ Lỗi khi kéo tab {TRUCK_RANGE}: {e_truck}')
 
 except Exception as e:
     print(f'❌ Lỗi cập nhật dữ liệu: {str(e)}')

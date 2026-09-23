@@ -7,6 +7,7 @@ on:
     paths:
       - 'app.py'
       - 'requirements.txt'
+      - 'Data B2B Master.xlsx'
 
 jobs:
   reboot:
