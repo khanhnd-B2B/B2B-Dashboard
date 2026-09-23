@@ -75,6 +75,41 @@ def require_login():
 if not require_login():
     st.stop()
 
+def fetch_google_sheets_live():
+    """Tự động kéo dữ liệu mới nhất từ Google Sheets Tab DataSorting khi file Excel chưa kịp cập nhật."""
+    try:
+        import json, base64
+        from googleapiclient.discovery import build
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        
+        cfg_path = 'advisor_config.json'
+        if not os.path.exists(cfg_path):
+            return pd.DataFrame()
+            
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+        b64_token = cfg.get('google_token_b64')
+        if not b64_token:
+            return pd.DataFrame()
+            
+        token_data = json.loads(base64.b64decode(b64_token).decode('utf-8'))
+        creds = Credentials.from_authorized_user_info(token_data, ['https://www.googleapis.com/auth/spreadsheets'])
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            
+        service = build('sheets', 'v4', credentials=creds)
+        result = service.spreadsheets().values().get(
+            spreadsheetId='1YNuLmUv6FRVMieyQy4JVnFscvkqnBdygzaWaQvOWMzU',
+            range='DataSorting'
+        ).execute()
+        values = result.get('values', [])
+        if len(values) >= 2:
+            return pd.DataFrame(values[1:], columns=values[0])
+    except Exception:
+        pass
+    return pd.DataFrame()
+
 # ==================== LOAD DATA ====================
 @st.cache_data(ttl=1800)
 def load_data():
@@ -98,13 +133,36 @@ def load_data():
         except Exception:
             pass
 
-    # ✅ ƯU TIÊN 2 (dự phòng): Đọc từ Google Sheets URL nếu Excel không tồn tại
+    # ✅ TỰ ĐỘNG GỘP DỮ LIỆU MỚI TỪ GOOGLE SHEETS NẾU EXCEL THIẾU NGÀY GẦN NHẤT
+    need_live_fetch = False
+    if df.empty:
+        need_live_fetch = True
+    elif 'NgayNhap' in df.columns:
+        latest_date = pd.to_datetime(df['NgayNhap'], errors='coerce').max()
+        yesterday = (datetime.now() - timedelta(days=1)).date()
+        if pd.isna(latest_date) or latest_date.date() < yesterday:
+            need_live_fetch = True
+            
+    if need_live_fetch:
+        try:
+            df_live = fetch_google_sheets_live()
+            if not df_live.empty:
+                if df.empty:
+                    df = df_live
+                    source_used = "Google Sheets (Live API)"
+                else:
+                    df = pd.concat([df, df_live], ignore_index=True)
+                    source_used = f"{local_file} + Google Sheets Live"
+        except Exception:
+            pass
+
+    # ✅ ƯU TIÊN 3 (dự phòng): Đọc từ Google Sheets URL nếu vẫn trống
     if df.empty:
         url = st.secrets.get("SHEET_URL", "")
         try:
             if url:
                 df = pd.read_csv(url)
-                source_used = "Google Sheets"
+                source_used = "Google Sheets (CSV URL)"
         except Exception:
             pass
 

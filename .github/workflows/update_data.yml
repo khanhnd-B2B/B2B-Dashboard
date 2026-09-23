@@ -2,8 +2,9 @@ name: Auto Update B2B Data
 
 on:
   schedule:
-    # Chạy 3 lần mỗi ngày theo giờ VN (UTC+7): 08:30 (01:30 UTC), 12:30 (05:30 UTC), 18:30 (11:30 UTC)
-    - cron: '30 1,5,11 * * *'
+    # Chạy mỗi 2 tiếng trong ngày (giờ VN từ 08:15 đến 22:15): 01:15, 03:15, 05:15, 07:15, 09:15, 11:15, 13:15, 15:15 UTC
+    # Phút 15 tránh tắc nghẽn hàng đợi GitHub Actions (vốn hay bị nghẽn ở phút 00 và 30)
+    - cron: '15 1,3,5,7,9,11,13,15 * * *'
   workflow_dispatch: # Cho phep bam chay thu cong tren GitHub
 
 jobs:
