@@ -791,29 +791,22 @@ class B2BTonAdvisor:
         ]
 
         if upcoming:
-            lines.append(f"🚛 <b>{len(upcoming)} CHUYẾN XUẤT BẾN TRONG {window_hours} GIỜ TỚI:</b>")
+            lines.append(f"🚛 <b>DANH SÁCH {len(upcoming)} CHUYẾN XUẤT BẾN TRONG {window_hours} GIỜ TỚI:</b>")
             for u in upcoming:
                 tt = f"{u['TrongTai']:,} kg" if u['TrongTai'] > 0 else "Xe cố định"
                 origin_str = f" (từ <i>{u['DiemDauTien']}</i>)" if u['DiemDauTien'] else ""
                 lines.append(f"• <b>{u['HHMM']}</b> — Tuyến <code>{u['MaTuyen']}</code> (Tải: {tt}){origin_str}")
-            lines.append("")
         else:
-            lines.append(f"ℹ️ <i>Trong {window_hours} giờ tới ({curr_time_str} ➔ {end_time_str}) không có chuyến nào xuất bến đi qua điểm này.</i>\n")
+            lines.append(f"ℹ️ <i>Trong {window_hours} giờ tới ({curr_time_str} ➔ {end_time_str}) không có chuyến nào xuất bến đi qua điểm này.</i>")
+            # Hiển thị duy nhất 1 chuyến gần nhất tiếp theo để người dùng biết giờ xe
+            after_now = [r for _, r in unique_trips.iterrows() if str(r['HHMM']) > curr_time_str]
+            next_t = after_now[0] if after_now else unique_trips.iloc[0]
+            tt_next = f"{next_t['TrongTai']:,} kg" if next_t['TrongTai'] > 0 else "Xe cố định"
+            origin_next = f" (từ <i>{next_t.get('DiemDauTien', '')}</i>)" if next_t.get('DiemDauTien') else ""
+            lines.append(f"⏰ <i>Chuyến xuất bến gần nhất tiếp theo:</i> <b>{next_t['HHMM']}</b> — Tuyến <code>{next_t['MaTuyen']}</code> (Tải: {tt_next}){origin_next}")
 
-        total_trips = len(unique_trips)
-        lines.append(f"📋 <b>TOÀN BỘ CÁC CHUYẾN TRONG LỊCH TẢI ĐI QUA ĐIỂM NÀY ({total_trips} CHUYẾN):</b>")
-        for idx, r in enumerate(unique_trips.head(15).itertuples(), 1):
-            tt = f"{r.TrongTai:,} kg" if r.TrongTai > 0 else "Xe cố định"
-            origin = getattr(r, 'DiemDauTien', '')
-            origin_str = f", từ {origin}" if origin else ""
-            badge = " ⚡ <b>(Sắp chạy trong 4h tới)</b>" if any(u['MaTuyen'] == r.MaTuyen and u['HHMM'] == r.HHMM for u in upcoming) else ""
-            lines.append(f"<b>{idx}.</b> <b>{r.HHMM}</b> — <code>{r.MaTuyen}</code> (Tải: {tt}{origin_str}){badge}")
-
-        if total_trips > 15:
-            lines.append(f"<i>... và còn {total_trips - 15} chuyến khác trong ngày.</i>")
-
-        sample_tuyen = unique_trips.iloc[0]['MaTuyen']
-        lines.append(f"\n👉 <i>Bạn có thể gõ trực tiếp mã tuyến (ví dụ: <code>{sample_tuyen}</code>) để xem lộ trình chi tiết từng điểm dừng!</i>")
+        sample_tuyen = upcoming[0]['MaTuyen'] if upcoming else unique_trips.iloc[0]['MaTuyen']
+        lines.append(f"\n👉 <i>Bạn có thể gõ trực tiếp mã tuyến (ví dụ: <code>{sample_tuyen}</code>) để xem chi tiết lộ trình từng điểm dừng!</i>")
 
         return "\n".join(lines)
 
