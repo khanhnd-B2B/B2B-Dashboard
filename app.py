@@ -90,7 +90,7 @@ def _get_google_sheets_service():
         from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
 
-        SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+        DEFAULT_SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
         creds = None
         # Nguồn 1: advisor_config.json (google_token_b64)
         if os.path.exists('advisor_config.json'):
@@ -100,7 +100,8 @@ def _get_google_sheets_service():
                 b64_token = cfg.get('google_token_b64')
                 if b64_token:
                     tdata = json.loads(base64.b64decode(b64_token).decode('utf-8'))
-                    creds = Credentials.from_authorized_user_info(tdata, SCOPES)
+                    scopes = tdata.get('scopes') or DEFAULT_SCOPES
+                    creds = Credentials.from_authorized_user_info(tdata, scopes)
             except Exception:
                 pass
 
@@ -110,7 +111,8 @@ def _get_google_sheets_service():
                 b64_token = get_secret("GOOGLE_TOKEN_B64", "")
                 if b64_token:
                     tdata = json.loads(base64.b64decode(b64_token).decode('utf-8'))
-                    creds = Credentials.from_authorized_user_info(tdata, SCOPES)
+                    scopes = tdata.get('scopes') or DEFAULT_SCOPES
+                    creds = Credentials.from_authorized_user_info(tdata, scopes)
             except Exception:
                 pass
 

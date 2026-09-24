@@ -15,6 +15,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,11 +38,11 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add "Data B2B Master.xlsx" "LichTaiUpdate7Ngay.xlsx" advisor_config.json
+          git add -f "Data B2B Master.xlsx" "LichTaiUpdate7Ngay.xlsx" advisor_config.json
           if ! git diff --staged --quiet; then
             git commit -m "Auto-update data from Google Sheets"
             git pull --rebase origin main || true
-            git push origin HEAD:main || true
+            git push origin main
           else
             echo "No changes to commit"
           fi
