@@ -640,7 +640,7 @@ class B2BTonAdvisor:
             self.send_telegram(err_msg, chat_id=chat_id, thread_id=thread_id)
 
     def lookup_route(self, query):
-        """Tra cứu lộ trình tuyến xe theo mã tuyến (ví dụ: HN_LaoCai_HN_03) và trả về thông tin các điểm dừng."""
+        """Tra cứu lộ trình theo mã tuyến hoặc các chuyến xe đi qua một điểm dừng/kho cụ thể."""
         if self.df_truck is None or getattr(self, '_last_truck_load_time', 0) < time.time() - 3600:
             self._load_truck_data()
             self._last_truck_load_time = time.time()
@@ -650,41 +650,50 @@ class B2BTonAdvisor:
 
         query_clean = str(query).strip().strip('`').strip('"').strip("'")
         if not query_clean:
-            return "⚠️ Vui lòng cung cấp mã tuyến xe (ví dụ: <code>HN_LaoCai_HN_03</code>)."
+            return "⚠️ Vui lòng cung cấp mã tuyến xe hoặc tên kho/điểm dừng (ví dụ: <code>HN_LaoCai_HN_03</code> hoặc <code>Kho Chuyển Tiếp Lào Cai</code>)."
 
         df = self.df_truck
         query_upper = query_clean.upper()
 
-        # 1. Khớp chính xác (không phân biệt hoa thường)
+        # 1. Ưu tiên 1: Khớp chính xác Mã Tuyến (case-insensitive)
         matched = df[df['MaTuyen'].astype(str).str.strip().str.upper() == query_upper]
-
-        # 2. Khớp sau khi chuẩn hóa khoảng trắng / gạch ngang thành gạch dưới
         if matched.empty:
             query_norm = query_upper.replace(' ', '_').replace('-', '_')
             matched = df[df['MaTuyen'].astype(str).str.strip().str.upper() == query_norm]
 
-        # 3. Tìm kiếm tương đối / chứa từ khóa nếu chưa tìm thấy khớp tuyệt đối
-        if matched.empty:
-            all_routes = df['MaTuyen'].dropna().astype(str).str.strip().unique()
-            partials = [r for r in all_routes if query_upper in r.upper()]
-            if len(partials) == 1:
-                matched = df[df['MaTuyen'].astype(str).str.strip() == partials[0]]
-            elif len(partials) > 1:
-                samples = partials[:10]
-                sug_lines = "\n".join([f"• <code>{r}</code>" for r in samples])
-                extra = f"\n<i>... và còn {len(partials) - 10} tuyến khác.</i>" if len(partials) > 10 else ""
-                return (
-                    f"🔍 <b>Tìm thấy {len(partials)} tuyến khớp với \"{query_clean}\":</b>\n\n"
-                    f"{sug_lines}{extra}\n\n"
-                    f"👉 <i>Vui lòng gửi lại chính xác mã tuyến (ví dụ: <code>{samples[0]}</code>) để xem toàn bộ điểm đi!</i>"
-                )
-            else:
-                return (
-                    f"⚠️ <b>Không tìm thấy tuyến xe nào khớp với mã:</b> <code>{query_clean}</code>\n\n"
-                    f"💡 <i>Mẹo:</i> Hãy gửi mã tuyến chuẩn như <code>HN_LaoCai_HN_03</code>, <code>HN_HaiPhong_06</code>, <code>HN_TH_03</code>..."
-                )
+        if not matched.empty:
+            return self._format_route_detail(matched)
 
-        return self._format_route_detail(matched)
+        # 2. Ưu tiên 2: Khớp theo Tên Điểm Dừng / Kho Trung Chuyển (trong ToanBoDiemDi hoặc TenDiem)
+        matched_stops = df[df['ToanBoDiemDi'].astype(str).str.contains(re.escape(query_clean), case=False, na=False)]
+        if matched_stops.empty and 'TenDiem' in df.columns:
+            matched_stops = df[df['TenDiem'].astype(str).str.contains(re.escape(query_clean), case=False, na=False)]
+
+        if not matched_stops.empty:
+            return self._format_stop_detail(matched_stops, query_clean, window_hours=4)
+
+        # 3. Ưu tiên 3: Tìm kiếm tương đối / chứa từ khóa theo Mã Tuyến
+        all_routes = df['MaTuyen'].dropna().astype(str).str.strip().unique()
+        partials = [r for r in all_routes if query_upper in r.upper()]
+        if len(partials) == 1:
+            matched = df[df['MaTuyen'].astype(str).str.strip() == partials[0]]
+            return self._format_route_detail(matched)
+        elif len(partials) > 1:
+            samples = partials[:10]
+            sug_lines = "\n".join([f"• <code>{r}</code>" for r in samples])
+            extra = f"\n<i>... và còn {len(partials) - 10} tuyến khác.</i>" if len(partials) > 10 else ""
+            return (
+                f"🔍 <b>Tìm thấy {len(partials)} tuyến xe khớp với mã \"{query_clean}\":</b>\n\n"
+                f"{sug_lines}{extra}\n\n"
+                f"👉 <i>Vui lòng gửi chính xác mã tuyến (ví dụ: <code>{samples[0]}</code>) để xem lộ trình!</i>"
+            )
+
+        return (
+            f"⚠️ <b>Không tìm thấy tuyến xe hoặc điểm dừng nào khớp với:</b> <code>{query_clean}</code>\n\n"
+            f"💡 <i>Mẹo tra cứu:</i>\n"
+            f"• <b>Tra theo mã tuyến:</b> <code>/tuyen HN_LaoCai_HN_03</code>, <code>HN_HaiPhong_06</code>, <code>HN_TH_03</code>...\n"
+            f"• <b>Tra theo điểm dừng/kho:</b> <code>/tuyen Kho Chuyển Tiếp Lào Cai</code>, <code>/tuyen Bát Xát</code>, <code>/tuyen Phú Thọ</code>..."
+        )
 
     def _format_route_detail(self, matched_df):
         ma_tuyen = matched_df['MaTuyen'].iloc[0]
@@ -743,6 +752,68 @@ class B2BTonAdvisor:
                     lines.append(f"<b>{idx}.</b> 🎯 <b>Điểm cuối (Đích đến):</b> {stop}")
                 else:
                     lines.append(f"<b>{idx}.</b> 📍 {stop}")
+
+        return "\n".join(lines)
+
+    def _format_stop_detail(self, matched_df, stop_query, window_hours=4):
+        now = get_vietnam_now()
+        curr_time_str = now.strftime('%H:%M')
+        end_time = now + timedelta(hours=window_hours)
+        end_time_str = end_time.strftime('%H:%M')
+
+        # Drop duplicates by MaTuyen and HHMM to get unique scheduled runs
+        unique_trips = matched_df.drop_duplicates(subset=['MaTuyen', 'HHMM']).sort_values('HHMM')
+        crosses_midnight = end_time.date() > now.date()
+
+        upcoming = []
+        for _, r in unique_trips.iterrows():
+            hh = str(r['HHMM'])
+            is_upcoming = False
+            if crosses_midnight:
+                if hh >= curr_time_str or hh <= end_time_str:
+                    is_upcoming = True
+            else:
+                if curr_time_str <= hh <= end_time_str:
+                    is_upcoming = True
+
+            if is_upcoming:
+                upcoming.append({
+                    'MaTuyen': r['MaTuyen'],
+                    'HHMM': hh,
+                    'TrongTai': r['TrongTai'],
+                    'DiemDauTien': r.get('DiemDauTien', r.get('TenDiem', ''))
+                })
+
+        lines = [
+            f"📍 <b>CÁC CHUYẾN XE ĐI QUA:</b> <code>{stop_query}</code>\n",
+            f"⏰ <b>Thời điểm tra cứu:</b> <b>{curr_time_str}</b> ({now.strftime('%d/%m/%Y')})",
+            f"⏳ <b>Khung giờ quét ({window_hours} giờ tới):</b> <b>{curr_time_str} ➔ {end_time_str}</b>\n"
+        ]
+
+        if upcoming:
+            lines.append(f"🚛 <b>{len(upcoming)} CHUYẾN XUẤT BẾN TRONG {window_hours} GIỜ TỚI:</b>")
+            for u in upcoming:
+                tt = f"{u['TrongTai']:,} kg" if u['TrongTai'] > 0 else "Xe cố định"
+                origin_str = f" (từ <i>{u['DiemDauTien']}</i>)" if u['DiemDauTien'] else ""
+                lines.append(f"• <b>{u['HHMM']}</b> — Tuyến <code>{u['MaTuyen']}</code> (Tải: {tt}){origin_str}")
+            lines.append("")
+        else:
+            lines.append(f"ℹ️ <i>Trong {window_hours} giờ tới ({curr_time_str} ➔ {end_time_str}) không có chuyến nào xuất bến đi qua điểm này.</i>\n")
+
+        total_trips = len(unique_trips)
+        lines.append(f"📋 <b>TOÀN BỘ CÁC CHUYẾN TRONG LỊCH TẢI ĐI QUA ĐIỂM NÀY ({total_trips} CHUYẾN):</b>")
+        for idx, r in enumerate(unique_trips.head(15).itertuples(), 1):
+            tt = f"{r.TrongTai:,} kg" if r.TrongTai > 0 else "Xe cố định"
+            origin = getattr(r, 'DiemDauTien', '')
+            origin_str = f", từ {origin}" if origin else ""
+            badge = " ⚡ <b>(Sắp chạy trong 4h tới)</b>" if any(u['MaTuyen'] == r.MaTuyen and u['HHMM'] == r.HHMM for u in upcoming) else ""
+            lines.append(f"<b>{idx}.</b> <b>{r.HHMM}</b> — <code>{r.MaTuyen}</code> (Tải: {tt}{origin_str}){badge}")
+
+        if total_trips > 15:
+            lines.append(f"<i>... và còn {total_trips - 15} chuyến khác trong ngày.</i>")
+
+        sample_tuyen = unique_trips.iloc[0]['MaTuyen']
+        lines.append(f"\n👉 <i>Bạn có thể gõ trực tiếp mã tuyến (ví dụ: <code>{sample_tuyen}</code>) để xem lộ trình chi tiết từng điểm dừng!</i>")
 
         return "\n".join(lines)
 
@@ -1210,31 +1281,30 @@ class B2BTonAdvisor:
         except Exception:
             pass
 
-        # 0. Tra cứu lộ trình tuyến xe (ví dụ: HN_LaoCai_HN_03 hoặc /tuyen HN_LaoCai_HN_03)
+        # 0. Tra cứu lộ trình tuyến xe hoặc điểm dừng (ví dụ: HN_LaoCai_HN_03 hoặc /tuyen Kho Chuyển Tiếp Lào Cai)
         # Case A: Lệnh /tuyen hoặc /lotrinh hoặc /route
         m_route_cmd = re.match(r'^/(?:tuyen|lotrinh|route)(?:@\w+)?(?:\s+(.+))?$', text, re.I)
         if m_route_cmd:
             route_arg = (m_route_cmd.group(1) or '').strip()
             if not route_arg:
                 usage_msg = (
-                    "ℹ️ <b>Cú pháp tra cứu lộ trình:</b>\n"
-                    "Gửi: <code>/tuyen &lt;mã_tuyến&gt;</code>\n\n"
-                    "<i>Ví dụ:</i>\n"
-                    "• <code>/tuyen HN_LaoCai_HN_03</code>\n"
-                    "• <code>/tuyen HN_HaiPhong_06</code>\n"
-                    "• <code>/tuyen HN_TH_03</code>\n\n"
-                    "👉 <i>Bạn cũng có thể gửi thẳng mã tuyến (ví dụ <code>HN_LaoCai_HN_03</code>), bot sẽ tự nhận diện và phản hồi!</i>"
+                    "ℹ️ <b>Cú pháp tra cứu lộ trình / chuyến xe:</b>\n\n"
+                    "• <b>Tra theo mã tuyến xe:</b> <code>/tuyen &lt;mã_tuyến&gt;</code>\n"
+                    "  <i>Ví dụ:</i> <code>/tuyen HN_LaoCai_HN_03</code> (xem tất cả điểm đi từ đầu đến cuối)\n\n"
+                    "• <b>Tra các chuyến đi qua điểm/kho (4h tới):</b> <code>/tuyen &lt;tên_kho_hoặc_điểm&gt;</code>\n"
+                    "  <i>Ví dụ:</i> <code>/tuyen Kho Chuyển Tiếp Lào Cai</code>\n\n"
+                    "👉 <i>Bạn cũng có thể gửi thẳng mã tuyến (ví dụ <code>HN_LaoCai_HN_03</code>), bot sẽ tự nhận diện!</i>"
                 )
                 self.send_telegram(usage_msg, chat_id=chat_id, thread_id=thread_id)
                 return
             self.reply_route_detail(chat_id, thread_id, route_arg)
             return
 
-        # Case B: Từ khóa tự nhiên chứa lộ trình hoặc tuyến xe (ví dụ: "lộ trình HN_LaoCai_HN_03", "tuyến HN_TH_03")
-        m_route_kw = re.search(r'(?:lộ\s*trình|tuyến\s*xe|tuyến)\s+([A-Za-z0-9_-]+)', text, re.I)
+        # Case B: Từ khóa tự nhiên chứa lộ trình hoặc tuyến xe (ví dụ: "lộ trình HN_LaoCai_HN_03", "tuyến qua Kho Chuyển Tiếp Lào Cai")
+        m_route_kw = re.search(r'(?:lộ\s*trình|tuyến\s*xe|tuyến)\s+(?:đi\s+|đến\s+|qua\s+)?(.+)', text, re.I)
         if m_route_kw:
             candidate = m_route_kw.group(1).strip()
-            if len(candidate) >= 3 and candidate.lower() not in ['nào', 'gì', 'sắp', 'đến', 'chạy', 'tồn', 'gần']:
+            if len(candidate) >= 3 and candidate.lower() not in ['nào', 'gì', 'sắp', 'đến', 'chạy', 'tồn', 'gần', 'cố định']:
                 self.reply_route_detail(chat_id, thread_id, candidate)
                 return
 
@@ -1261,7 +1331,7 @@ class B2BTonAdvisor:
                 f"👋 Chào <b>{sender_name}</b>! Tôi là Bot Cảnh Báo Tồn B2B & Lịch Xe GHN.\n\n"
                 f"🛠 <b>CÁC LỆNH HỖ TRỢ:</b>\n"
                 f"• Gõ <code>/ton</code> hoặc <code>/check</code>: Quét tồn và báo cáo lịch tải tuyến 4 giờ tới.\n"
-                f"• Gửi <b>mã tuyến</b> (ví dụ: <code>HN_LaoCai_HN_03</code>) hoặc gõ <code>/tuyen &lt;mã_tuyến&gt;</code>: <b>Xem lộ trình & các điểm đi chi tiết</b> của xe.\n"
+                f"• Gõ <code>/tuyen &lt;mã_tuyến_hoặc_tên_kho&gt;</code>: <b>Xem lộ trình & các chuyến xe đi qua trong 4 giờ tới</b> <i>(Ví dụ: <code>/tuyen HN_LaoCai_HN_03</code> hoặc <code>/tuyen Kho Chuyển Tiếp Lào Cai</code>)</i>.\n"
                 f"• Gõ <code>/status</code>: Kiểm tra trạng thái hoạt động trực tuyến 24/7 của Bot.\n"
                 f"• Gõ <code>/login &lt;email&gt; &lt;mật_khẩu&gt;</code>: <b>Tự động đăng nhập Metabase</b> — Bot sẽ tự động lấy và gia hạn token mới vĩnh viễn.\n"
                 f"• Gõ <code>/token &lt;session_token&gt;</code>: Cập nhật mã Cookie <code>metabase.SESSION</code> mới khi phiên hết hạn.\n"
