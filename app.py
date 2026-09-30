@@ -283,9 +283,9 @@ with _btn_col:
 df = df_raw.copy()
 
 # ========== CHỌN THỜI GIAN VÀ BỘ LỌC (TOÀN CỤC) ==========
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns([1.1, 1.3, 1.1, 1.1, 2.0])
 with col1:
-    time_freq = st.selectbox("⏰ NHÓM THEO THỜI GIAN:", options=['Ngày (D)', 'Tuần (W)', 'Tháng (M)'], index=0)
+    time_freq = st.selectbox("⏰ NHÓM THỜI GIAN:", options=['Ngày (D)', 'Tuần (W)', 'Tháng (M)'], index=0)
 with col2:
     if 'NgayNhap' in df.columns and not df['NgayNhap'].dropna().empty:
         max_date = df['NgayNhap'].dropna().max().date()
@@ -312,20 +312,47 @@ with col3:
         
     kho_nhap_filter = st.selectbox("🏭 KHO NHẬP:", options=allowed_khos)
 with col4:
-    if 'ClientName' in df.columns:
-        client_options = sorted([c for c in df['ClientName'].dropna().unique() if str(c).strip()])
-    elif 'Client_ID' in df.columns:
-        client_options = sorted([c for c in df['Client_ID'].dropna().unique() if str(c).strip()])
-    else:
-        client_options = []
-
-    clients = st.multiselect(
-        "🎯 BỘ LỌC KHÁCH HÀNG (Chọn nhiều):",
-        options=client_options,
-        default=[],
-        placeholder="Tích chọn 1 hoặc nhiều khách hàng...",
-        help="💡 Bạn có thể click chọn hoặc gõ tìm kiếm để tích chọn nhiều khách hàng cùng lúc. Để trống = Xem toàn bộ khách hàng."
+    client_filter_mode = st.selectbox(
+        "🏷️ LỌC KH THEO:",
+        options=["Tên khách hàng", "Mã khách hàng (ID)"],
+        index=0,
+        help="Chọn lọc danh sách khách hàng theo Tên hoặc theo Mã ID"
     )
+with col5:
+    if client_filter_mode == "Mã khách hàng (ID)":
+        id_name_map = {}
+        if 'Client_ID' in df.columns:
+            df_valid_c = df.dropna(subset=['Client_ID'])
+            for cid, grp in df_valid_c.groupby('Client_ID'):
+                names = [str(n).strip() for n in grp['ClientName'].dropna().unique() if str(n).strip() and str(n).lower() not in ['nan', 'none']]
+                id_name_map[int(cid)] = names[0] if names else ""
+            client_id_options = sorted([int(c) for c in df_valid_c['Client_ID'].unique()])
+        else:
+            client_id_options = []
+
+        clients = st.multiselect(
+            "🎯 BỘ LỌC MÃ KH (Chọn nhiều ID):",
+            options=client_id_options,
+            default=[],
+            format_func=lambda cid: f"{cid} - {id_name_map.get(cid, '')}" if id_name_map.get(cid) else str(cid),
+            placeholder="Tích chọn hoặc gõ mã ID khách hàng...",
+            help="💡 Bạn có thể click chọn hoặc gõ tìm kiếm theo Mã ID hoặc Tên KH. Để trống = Xem toàn bộ.",
+            key="filter_client_by_id"
+        )
+    else:
+        if 'ClientName' in df.columns:
+            client_options = sorted([c for c in df['ClientName'].dropna().unique() if str(c).strip()])
+        else:
+            client_options = []
+
+        clients = st.multiselect(
+            "🎯 BỘ LỌC TÊN KH (Chọn nhiều):",
+            options=client_options,
+            default=[],
+            placeholder="Tích chọn 1 hoặc nhiều Tên KH...",
+            help="💡 Bạn có thể click chọn hoặc gõ tìm kiếm để tích chọn nhiều khách hàng cùng lúc. Để trống = Xem toàn bộ khách hàng.",
+            key="filter_client_by_name"
+        )
 
 freq_map = {'Ngày (D)': 'D', 'Tuần (W)': 'W', 'Tháng (M)': 'M'}
 nperiod_map = {'D': 30, 'W': 6, 'M': 3}
@@ -351,10 +378,12 @@ elif kho_nhap_filter == 'B2B Hưng Yên':
         df_filtered = df_filtered[df_filtered['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)]
 
 if clients:
-    if 'ClientName' in df_filtered.columns:
-        df_filtered = df_filtered[df_filtered['ClientName'].isin(clients)]
-    elif 'Client_ID' in df_filtered.columns:
-        df_filtered = df_filtered[df_filtered['Client_ID'].isin(clients)]
+    if client_filter_mode == "Mã khách hàng (ID)":
+        if 'Client_ID' in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered['Client_ID'].isin(clients)]
+    else:
+        if 'ClientName' in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered['ClientName'].isin(clients)]
 
 def get_period(dt_series, f):
     if f == 'D': return dt_series.dt.to_period('D').dt.start_time
