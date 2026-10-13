@@ -294,7 +294,12 @@ with col2:
     else:
         min_date = (datetime.today() - timedelta(days=29)).date()
         max_date = datetime.today().date()
-    date_range = st.date_input("📅 TỪ NGÀY - ĐẾN NGÀY:", value=(min_date, max_date))
+    date_range = st.date_input(
+        "📅 TỪ NGÀY - ĐẾN NGÀY:",
+        value=(min_date, max_date),
+        min_value=min_date_data,
+        help=f"Dữ liệu có sẵn từ {min_date_data.strftime('%d/%m/%Y')} đến {max_date.strftime('%d/%m/%Y')}. Bạn có thể chọn xem bất kỳ khoảng thời gian nào."
+    )
 with col3:
     user_email = st.session_state.get("user_email", "")
     allowed_khos = ['Tất cả', 'B2B Đài Tư', 'B2B Hưng Yên']
@@ -541,7 +546,7 @@ with tab1:
     df_daitu = df_filtered[df_filtered['KhoNhap'].str.contains('Đài Tư', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
     df_hungyen = df_filtered[df_filtered['KhoNhap'].str.contains('Hưng Yên', case=False, na=False)] if 'KhoNhap' in df_filtered.columns else pd.DataFrame()
 
-    def build_overview_table(df_source, f='D', max_p=30):
+    def build_overview_table(df_source, f='D', max_p=None, ascending=False):
         if df_source is None or df_source.empty or 'Period_Str' not in df_source.columns or 'Period' not in df_source.columns:
             return None
         df_src = df_source.copy()
@@ -576,8 +581,12 @@ with tab1:
 
         period_map = df_src.drop_duplicates('Period_Str').set_index('Period_Str')['Period'].to_dict()
         overview_df['Period'] = overview_df.index.map(period_map)
-        limit_p = 30 if f == 'D' else max_p
-        overview_df = overview_df.sort_values('Period', ascending=False).drop(columns=['Period']).head(limit_p).T
+        
+        # Sắp xếp theo Period: ascending=False là mới nhất ở cột đầu bên trái, ascending=True là cũ nhất ở cột đầu bên trái
+        overview_df = overview_df.sort_values('Period', ascending=ascending)
+        if max_p is not None and max_p > 0:
+            overview_df = overview_df.head(max_p)
+        overview_df = overview_df.drop(columns=['Period']).T
         overview_df.index.name = 'Thời gian'
 
         for col in overview_df.columns:
@@ -617,10 +626,21 @@ with tab1:
         qc4.metric("🆕 KH mới phát sinh", f"{latest_k['Số KH mới']:,.0f} KH", f"Đơn TB: {latest_k['Đơn TB / KH']:.1f}/KH")
         st.markdown("---")
 
-    st.markdown("<h3 style='color: #004b8b; text-decoration: underline;'>A. Overview</h3>", unsafe_allow_html=True)
+    col_ov_title, col_ov_sort = st.columns([3, 1])
+    with col_ov_title:
+        st.markdown("<h3 style='color: #004b8b; text-decoration: underline; margin-bottom: 0;'>A. Overview</h3>", unsafe_allow_html=True)
+    with col_ov_sort:
+        sort_order = st.selectbox(
+            "Sắp xếp ngày bảng:",
+            options=["Mới nhất trước (Mặc định)", "Cũ nhất trước"],
+            index=0,
+            help="Chọn 'Cũ nhất trước' để các ngày cũ như 01/09 xuất hiện ngay ở cột đầu tiên bên trái."
+        )
+    ascending_sort = (sort_order == "Cũ nhất trước")
     
-    overview_group = build_overview_table(df_filtered, freq, n_periods)
+    overview_group = build_overview_table(df_filtered, freq, max_p=None, ascending=ascending_sort)
     if overview_group is not None and not overview_group.empty:
+        st.caption(f"📅 Đang hiển thị trọn vẹn **{len(overview_group.columns)}** ngày theo bộ lọc thời gian đã chọn (kéo thanh cuộn ngang để xem tất cả).")
         st.dataframe(overview_group, use_container_width=True)
     else:
         st.info("Không có dữ liệu tổng quan.")
@@ -640,10 +660,6 @@ with tab1:
                 grouped_date_kho = grouped_date_kho[grouped_date_kho['Kho'].isin(['Đài Tư', 'Hưng Yên'])]
                 grouped_date_kho = grouped_date_kho.groupby(['Period', 'Ngày', 'Kho']).agg({'Số_đơn': 'sum', 'Tổng_KG': 'sum'}).reset_index().sort_values('Period')
                 
-                if freq == 'D':
-                    recent_days = sorted(grouped_date_kho['Period'].unique())[-30:]
-                    grouped_date_kho = grouped_date_kho[grouped_date_kho['Period'].isin(recent_days)]
-                
                 if not grouped_date_kho.empty:
                     y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
                     title = "Lượng hàng nhập"
@@ -662,9 +678,6 @@ with tab1:
                 grouped_total['NguonNhap'] = 'Tổng nhập'
                 grouped_chart = pd.concat([grouped_total, grouped_nguon], ignore_index=True)
 
-                if freq == 'D':
-                    recent_days = sorted(grouped_chart['Period'].unique())[-30:]
-                    grouped_chart = grouped_chart[grouped_chart['Period'].isin(recent_days)]
                 if not grouped_chart.empty:
                     y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
                     y_label = 'Số đơn' if metric_view == 'Số đơn' else 'Khối lượng (kg)'
@@ -720,9 +733,9 @@ with tab1:
             c3.metric("Nhập từ kho khác", f"{khac_kg:,.0f} kg")
             
         # Bảng chi tiết sản lượng kho theo thời gian (giống bảng A. Overview)
-        wh_overview_table = build_overview_table(df_wh_full, f=freq, max_p=n_periods)
+        wh_overview_table = build_overview_table(df_wh_full, f=freq, max_p=None, ascending=ascending_sort)
         if wh_overview_table is not None and not wh_overview_table.empty:
-            st.markdown(f"**Bảng chi tiết sản lượng kho {wh_name} theo thời gian**")
+            st.markdown(f"**Bảng chi tiết sản lượng kho {wh_name} theo thời gian** (kéo thanh cuộn ngang để xem tất cả)")
             st.dataframe(wh_overview_table, use_container_width=True)
 
         # Biểu đồ dạng đường nguồn nhập của kho
@@ -734,10 +747,6 @@ with tab1:
             grouped_wh_total = df_wh_full.groupby(['Period', 'Ngày']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
             grouped_wh_total['NguonNhap'] = 'Tổng nhập'
             grouped_wh_chart = pd.concat([grouped_wh_total, grouped_wh_nguon], ignore_index=True)
-            
-            if freq == 'D':
-                recent_days = sorted(grouped_wh_chart['Period'].unique())[-30:]
-                grouped_wh_chart = grouped_wh_chart[grouped_wh_chart['Period'].isin(recent_days)]
             if not grouped_wh_chart.empty:
                 y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
                 y_label = 'Số đơn' if metric_view == 'Số đơn' else 'Khối lượng (kg)'
@@ -874,8 +883,7 @@ with tab_growth:
         # 2. BIỂU ĐỒ XU HƯỚNG VÀ TỐC ĐỘ TĂNG TRƯỞNG
         st.markdown("### 📊 Biểu đồ Xu hướng & Tốc độ Tăng trưởng")
         
-        max_show = 30 if g_freq_code == 'D' else (16 if g_freq_code == 'W' else 12)
-        df_chart_data = df_growth_summary.tail(max_show).copy()
+        df_chart_data = df_growth_summary.copy()
 
         chart_tab1, chart_tab2, chart_tab3 = st.tabs([
             "📈 Xu hướng Sản lượng & Tăng trưởng (%)",
@@ -969,8 +977,7 @@ with tab_growth:
                     Số_KH=('ClientName', 'nunique')
                 ).reset_index().sort_values('Period_Calc')
 
-                recent_wh_pers = sorted(wh_grouped['Period_Calc'].unique())[-max_show:]
-                wh_grouped = wh_grouped[wh_grouped['Period_Calc'].isin(recent_wh_pers)]
+
 
                 if not wh_grouped.empty:
                     y_wh_metric = 'Số_đơn' if growth_metric_view == 'Số đơn' else 'Tổng_KG'
