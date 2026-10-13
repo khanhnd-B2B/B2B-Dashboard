@@ -649,32 +649,35 @@ with tab1:
     
     sub1, sub2, sub3 = st.tabs(['📊 Tổng hợp', '🏭 B2B Đài Tư', '🏭 B2B Hưng Yên'])
     
+    time_unit_lbl = 'Ngày' if freq == 'D' else ('Tuần' if freq == 'W' else 'Tháng')
+    
     with sub1:
         if 'NgayNhap' in df_filtered.columns:
             df_chart1 = df_filtered.copy()
-            df_chart1['Ngày'] = df_chart1['Period_Str']
+            df_chart1['Thời gian'] = df_chart1['Period_Str']
             
             if 'KhoNhap' in df_chart1.columns:
-                grouped_date_kho = df_chart1.groupby(['Period', 'Ngày', 'KhoNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
+                grouped_date_kho = df_chart1.groupby(['Period', 'Thời gian', 'KhoNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
                 grouped_date_kho['Kho'] = grouped_date_kho['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
                 grouped_date_kho = grouped_date_kho[grouped_date_kho['Kho'].isin(['Đài Tư', 'Hưng Yên'])]
-                grouped_date_kho = grouped_date_kho.groupby(['Period', 'Ngày', 'Kho']).agg({'Số_đơn': 'sum', 'Tổng_KG': 'sum'}).reset_index().sort_values('Period')
+                grouped_date_kho = grouped_date_kho.groupby(['Period', 'Thời gian', 'Kho']).agg({'Số_đơn': 'sum', 'Tổng_KG': 'sum'}).reset_index().sort_values('Period')
                 
                 if not grouped_date_kho.empty:
                     y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
-                    title = "Lượng hàng nhập"
-                    fig1 = px.line(grouped_date_kho, x='Ngày', y=y_col, color='Kho', markers=True, title=title, custom_data=['Số_đơn', 'Tổng_KG'])
-                    fig1.update_xaxes(categoryorder='array', categoryarray=grouped_date_kho['Ngày'].unique())
+                    title = f"Lượng hàng nhập theo {time_unit_lbl.lower()}"
+                    fig1 = px.line(grouped_date_kho, x='Thời gian', y=y_col, color='Kho', markers=True, title=title, custom_data=['Số_đơn', 'Tổng_KG'])
+                    fig1.update_xaxes(categoryorder='array', categoryarray=grouped_date_kho['Thời gian'].unique())
+                    fig1.update_layout(xaxis_title=f"Thời gian ({time_unit_lbl})")
                     fig1.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig1, use_container_width=True)
                 else:
                     st.info("Không có dữ liệu cho biểu đồ lượng hàng nhập.")
                     
             if 'NguonNhap' in df_chart1.columns:
-                grouped_nguon = df_chart1.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+                grouped_nguon = df_chart1.groupby(['Period', 'Thời gian', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
                 
                 # Thêm đường Tổng nhập để thể hiện cả xu hướng tổng và chi tiết từng nguồn
-                grouped_total = df_chart1.groupby(['Period', 'Ngày']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+                grouped_total = df_chart1.groupby(['Period', 'Thời gian']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
                 grouped_total['NguonNhap'] = 'Tổng nhập'
                 grouped_chart = pd.concat([grouped_total, grouped_nguon], ignore_index=True)
 
@@ -683,34 +686,91 @@ with tab1:
                     y_label = 'Số đơn' if metric_view == 'Số đơn' else 'Khối lượng (kg)'
                     fig2 = px.line(
                         grouped_chart, 
-                        x='Ngày', 
+                        x='Thời gian', 
                         y=y_col, 
                         color='NguonNhap', 
                         markers=True, 
-                        title="Biểu đồ nguồn nhập", 
-                        labels={'NguonNhap': 'Nguồn nhập', y_col: y_label}, 
+                        title=f"Biểu đồ nguồn nhập theo {time_unit_lbl.lower()}", 
+                        labels={'NguonNhap': 'Nguồn nhập', y_col: y_label, 'Thời gian': f"Thời gian ({time_unit_lbl})"}, 
                         custom_data=['Số_đơn', 'Tổng_KG']
                     )
-                    sorted_days = grouped_chart.sort_values('Period')['Ngày'].unique()
+                    sorted_days = grouped_chart.sort_values('Period')['Thời gian'].unique()
                     fig2.update_xaxes(categoryorder='array', categoryarray=sorted_days)
+                    fig2.update_layout(xaxis_title=f"Thời gian ({time_unit_lbl})")
                     fig2.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
                     st.plotly_chart(fig2, use_container_width=True)
                 else:
                     st.info("Không có dữ liệu cho biểu đồ nguồn nhập.")
                     
     def render_warehouse_tab(df_wh_full, wh_name):
-        latest_period_str = ""
-        df_wh = df_wh_full
-        if 'Period' in df_wh_full.columns and not df_wh_full.empty:
-            max_period = df_wh_full['Period'].max()
-            df_wh = df_wh_full[df_wh_full['Period'] == max_period]
-            latest_period_str = df_wh['Period_Str'].iloc[0] if 'Period_Str' in df_wh.columns else ""
-            
-        st.subheader(f"CHI TIẾT KHO {wh_name}" + (f" (Kỳ gần nhất: {latest_period_str})" if latest_period_str else ""))
-        if df_wh.empty:
+        if df_wh_full is None or df_wh_full.empty:
             st.info(f"Không có dữ liệu cho kho {wh_name}")
             return
             
+        time_unit_lbl_wh = 'Ngày' if freq == 'D' else ('Tuần' if freq == 'W' else 'Tháng')
+        
+        # 1. Bảng chi tiết sản lượng kho theo thời gian (giống bảng A. Overview)
+        wh_overview_table = build_overview_table(df_wh_full, f=freq, max_p=None, ascending=ascending_sort)
+        if wh_overview_table is not None and not wh_overview_table.empty:
+            st.markdown(f"**Bảng chi tiết sản lượng kho {wh_name} theo {time_unit_lbl_wh.lower()}** (kéo thanh cuộn ngang để xem tất cả)")
+            st.dataframe(wh_overview_table, use_container_width=True)
+
+        # 2. Biểu đồ dạng đường nguồn nhập của kho theo thời gian (toàn bộ kỳ)
+        if 'NguonNhap' in df_wh_full.columns and 'Period_Str' in df_wh_full.columns:
+            df_wh_chart_data = df_wh_full.copy()
+            df_wh_chart_data['Thời gian'] = df_wh_chart_data['Period_Str']
+            grouped_wh_nguon = df_wh_chart_data.groupby(['Period', 'Thời gian', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+            
+            # Thêm đường Tổng nhập để quan sát cả tổng lượng và các nguồn nhập
+            grouped_wh_total = df_wh_chart_data.groupby(['Period', 'Thời gian']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
+            grouped_wh_total['NguonNhap'] = 'Tổng nhập'
+            grouped_wh_chart = pd.concat([grouped_wh_total, grouped_wh_nguon], ignore_index=True)
+            if not grouped_wh_chart.empty:
+                y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
+                y_label = 'Số đơn' if metric_view == 'Số đơn' else 'Khối lượng (kg)'
+                fig_wh_nguon = px.line(
+                    grouped_wh_chart, 
+                    x='Thời gian', 
+                    y=y_col, 
+                    color='NguonNhap', 
+                    markers=True, 
+                    title=f"Biểu đồ nguồn nhập {wh_name} theo {time_unit_lbl_wh.lower()}", 
+                    labels={'NguonNhap': 'Nguồn nhập', y_col: y_label, 'Thời gian': f"Thời gian ({time_unit_lbl_wh})"}, 
+                    custom_data=['Số_đơn', 'Tổng_KG']
+                )
+                sorted_days = grouped_wh_chart.sort_values('Period')['Thời gian'].unique()
+                fig_wh_nguon.update_xaxes(categoryorder='array', categoryarray=sorted_days)
+                fig_wh_nguon.update_layout(xaxis_title=f"Thời gian ({time_unit_lbl_wh})")
+                fig_wh_nguon.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
+                st.plotly_chart(fig_wh_nguon, use_container_width=True)
+
+        st.markdown("---")
+        
+        # 3. PHẦN CHI TIẾT & CƠ CẤU (CHO PHÉP CHỌN TOÀN BỘ KHOẢNG THỜI GIAN HOẶC TỪNG KỲ CỤ THỂ)
+        period_options = ["Toàn bộ khoảng thời gian đã chọn"]
+        if 'Period_Str' in df_wh_full.columns:
+            unique_pers = df_wh_full.sort_values('Period', ascending=False)['Period_Str'].unique().tolist()
+            period_options += unique_pers
+
+        col_wh_header, col_wh_sel = st.columns([2.2, 1.8])
+        with col_wh_header:
+            st.markdown(f"#### 🔍 Cơ cấu & Chi tiết - {wh_name}")
+        with col_wh_sel:
+            selected_period = st.selectbox(
+                f"Phạm vi dữ liệu ({wh_name}):",
+                options=period_options,
+                index=0,
+                key=f"wh_period_select_{wh_name}",
+                help="Chọn 'Toàn bộ khoảng thời gian đã chọn' để tổng hợp theo bộ lọc ngày, hoặc chọn từng ngày/tuần cụ thể để xem chi tiết kỳ đó."
+            )
+
+        if selected_period == "Toàn bộ khoảng thời gian đã chọn":
+            df_wh = df_wh_full.copy()
+            scope_desc = "Toàn kỳ đã chọn"
+        else:
+            df_wh = df_wh_full[df_wh_full['Period_Str'] == selected_period].copy()
+            scope_desc = f"Kỳ {selected_period}"
+
         total_don = df_wh['MaDonGoc'].nunique() if 'MaDonGoc' in df_wh.columns else len(df_wh)
         total_kg = df_wh['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_wh.columns else 0
         
@@ -722,6 +782,8 @@ with tab1:
         khac_don = df_khac['MaDonGoc'].nunique() if 'MaDonGoc' in df_khac.columns else len(df_khac)
         khac_kg = df_khac['KhoiLuongKG'].sum() if 'KhoiLuongKG' in df_khac.columns else 0
         
+        st.caption(f"📌 Đang hiển thị: **{scope_desc}** · Tổng: **{total_don:,.0f}** đơn · **{total_kg:,.0f}** kg")
+        
         c1, c2, c3 = st.columns(3)
         if metric_view == 'Số đơn':
             c1.metric("Tổng nhập", f"{total_don:,.0f} đơn")
@@ -732,54 +794,20 @@ with tab1:
             c2.metric("Tự lấy", f"{tu_lay_kg:,.0f} kg")
             c3.metric("Nhập từ kho khác", f"{khac_kg:,.0f} kg")
             
-        # Bảng chi tiết sản lượng kho theo thời gian (giống bảng A. Overview)
-        wh_overview_table = build_overview_table(df_wh_full, f=freq, max_p=None, ascending=ascending_sort)
-        if wh_overview_table is not None and not wh_overview_table.empty:
-            st.markdown(f"**Bảng chi tiết sản lượng kho {wh_name} theo thời gian** (kéo thanh cuộn ngang để xem tất cả)")
-            st.dataframe(wh_overview_table, use_container_width=True)
-
-        # Biểu đồ dạng đường nguồn nhập của kho
-        if 'NguonNhap' in df_wh_full.columns and 'Period_Str' in df_wh_full.columns:
-            df_wh_full['Ngày'] = df_wh_full['Period_Str']
-            grouped_wh_nguon = df_wh_full.groupby(['Period', 'Ngày', 'NguonNhap']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
-            
-            # Thêm đường Tổng nhập để quan sát cả tổng lượng và các nguồn nhập
-            grouped_wh_total = df_wh_full.groupby(['Period', 'Ngày']).agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index().sort_values('Period')
-            grouped_wh_total['NguonNhap'] = 'Tổng nhập'
-            grouped_wh_chart = pd.concat([grouped_wh_total, grouped_wh_nguon], ignore_index=True)
-            if not grouped_wh_chart.empty:
-                y_col = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
-                y_label = 'Số đơn' if metric_view == 'Số đơn' else 'Khối lượng (kg)'
-                fig_wh_nguon = px.line(
-                    grouped_wh_chart, 
-                    x='Ngày', 
-                    y=y_col, 
-                    color='NguonNhap', 
-                    markers=True, 
-                    title=f"Biểu đồ nguồn nhập {wh_name}", 
-                    labels={'NguonNhap': 'Nguồn nhập', y_col: y_label}, 
-                    custom_data=['Số_đơn', 'Tổng_KG']
-                )
-                sorted_days = grouped_wh_chart.sort_values('Period')['Ngày'].unique()
-                fig_wh_nguon.update_xaxes(categoryorder='array', categoryarray=sorted_days)
-                fig_wh_nguon.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>%{customdata[0]:,.0f} đơn - %{customdata[1]:,.0f} kg")
-                st.plotly_chart(fig_wh_nguon, use_container_width=True)
-        
-        
         col_chart1, col_chart2 = st.columns(2)
         with col_chart1:
-            if 'NguonNhap' in df_wh.columns:
+            if 'NguonNhap' in df_wh.columns and not df_wh.empty:
                 pie_data = df_wh.groupby('NguonNhap').agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).reset_index()
                 pie_data.columns = ['Nguồn nhập', 'Số đơn', 'Tổng KG']
                 pie_data = pie_data.fillna(0)
                 if not pie_data.empty:
                     pie_data['hover_text'] = pie_data.apply(lambda r: f"{r['Số đơn']:,.0f} đơn - {r['Tổng KG']:,.0f} kg", axis=1)
                     val_col = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
-                    fig_pie = px.pie(pie_data, values=val_col, names='Nguồn nhập', title="Tỷ lệ nguồn nhập", custom_data=['hover_text'])
+                    fig_pie = px.pie(pie_data, values=val_col, names='Nguồn nhập', title=f"Tỷ lệ nguồn nhập ({scope_desc})", custom_data=['hover_text'])
                     fig_pie.update_traces(hovertemplate="%{label}<br>%{customdata[0]}")
                     st.plotly_chart(fig_pie, use_container_width=True)
         with col_chart2:
-            if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns:
+            if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and not df_wh.empty:
                 val_col_tinh = 'Số_đơn' if metric_view == 'Số đơn' else 'Tổng_KG'
                 top_tinh = df_wh.groupby('TinhGiao').agg(Số_đơn=('MaDonGoc', 'nunique'), Tổng_KG=('KhoiLuongKG', 'sum')).nlargest(15, val_col_tinh).reset_index()
                 top_tinh.columns = ['Tỉnh giao', 'Số đơn', 'Tổng KG']
@@ -787,28 +815,46 @@ with tab1:
                 if not top_tinh.empty:
                     top_tinh['hover_text'] = top_tinh.apply(lambda r: f"{r['Số đơn']:,.0f} đơn - {r['Tổng KG']:,.0f} kg", axis=1)
                     y_col_tinh = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng KG'
-                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y=y_col_tinh, title="Top 15 Tỉnh giao", custom_data=['hover_text'])
+                    fig_bar = px.bar(top_tinh, x='Tỉnh giao', y=y_col_tinh, title=f"Top 15 Tỉnh giao ({scope_desc})", custom_data=['hover_text'])
                     fig_bar.update_traces(hovertemplate="%{x}<br>%{customdata[0]}")
                     st.plotly_chart(fig_bar, use_container_width=True)
                     
         col_tbl1, col_tbl2 = st.columns(2)
         with col_tbl1:
-            st.markdown("**Chi tiết theo Tên Khách Hàng**")
-            if 'ClientName' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaDonGoc' in df_wh.columns:
+            st.markdown(f"**Chi tiết theo Tên Khách Hàng** *({scope_desc})*")
+            if 'ClientName' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaDonGoc' in df_wh.columns and not df_wh.empty:
                 tbl_client = df_wh.groupby('ClientName').agg(
                     Số_đơn=('MaDonGoc', 'nunique'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
                 ).reset_index().sort_values('Số_đơn', ascending=False)
-                st.dataframe(tbl_client.style.format({'Tổng_KG': '{:,.0f}'}), use_container_width=True)
+                tbl_client = tbl_client.rename(columns={
+                    'ClientName': 'Tên Khách Hàng',
+                    'Số_đơn': 'Số đơn',
+                    'Tổng_KG': 'Tổng khối lượng (KG)'
+                })
+                st.dataframe(
+                    tbl_client.style.format({'Số đơn': '{:,.0f}', 'Tổng khối lượng (KG)': '{:,.0f}'}),
+                    use_container_width=True,
+                    hide_index=True
+                )
                 
         with col_tbl2:
-            st.markdown("**Chi tiết theo Tỉnh giao**")
-            if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaDonGoc' in df_wh.columns:
+            st.markdown(f"**Chi tiết theo Tỉnh giao** *({scope_desc})*")
+            if 'TinhGiao' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaDonGoc' in df_wh.columns and not df_wh.empty:
                 tbl_tinh = df_wh.groupby('TinhGiao').agg(
                     Số_đơn=('MaDonGoc', 'nunique'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
                 ).reset_index().sort_values('Số_đơn', ascending=False)
-                st.dataframe(tbl_tinh.style.format({'Tổng_KG': '{:,.0f}'}), use_container_width=True)
+                tbl_tinh = tbl_tinh.rename(columns={
+                    'TinhGiao': 'Tỉnh Giao',
+                    'Số_đơn': 'Số đơn',
+                    'Tổng_KG': 'Tổng khối lượng (KG)'
+                })
+                st.dataframe(
+                    tbl_tinh.style.format({'Số đơn': '{:,.0f}', 'Tổng khối lượng (KG)': '{:,.0f}'}),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
     with sub2:
         render_warehouse_tab(df_daitu, "B2B ĐÀI TƯ")
@@ -1034,7 +1080,8 @@ with tab_growth:
                             '% Tăng đơn': '{:+.1f}%',
                             'Thay đổi KG': '{:+,.0f}'
                         }),
-                        use_container_width=True
+                        use_container_width=True,
+                        hide_index=True
                     )
                 else:
                     st.info("Không có khách hàng nào tăng trưởng trong kỳ này.")
@@ -1053,7 +1100,8 @@ with tab_growth:
                             '% Tăng đơn': '{:+.1f}%',
                             'Thay đổi KG': '{:+,.0f}'
                         }),
-                        use_container_width=True
+                        use_container_width=True,
+                        hide_index=True
                     )
                 else:
                     st.info("Không có khách hàng nào bị sụt giảm trong kỳ này.")
@@ -1066,7 +1114,8 @@ with tab_growth:
                         df_new_list[['ClientName', 'Đơn_kỳ_này', 'KG_kỳ_này']]
                         .rename(columns={'ClientName': 'Tên Khách Hàng', 'Đơn_kỳ_này': 'Số đơn', 'KG_kỳ_này': 'Khối lượng (KG)'})
                         .style.format({'Số đơn': '{:,.0f}', 'Khối lượng (KG)': '{:,.0f}'}),
-                        use_container_width=True
+                        use_container_width=True,
+                        hide_index=True
                     )
                 else:
                     st.info("Không có khách hàng mới nào trong kỳ này.")
@@ -1079,7 +1128,8 @@ with tab_growth:
                         df_churn_list[['ClientName', 'Đơn_kỳ_trước', 'KG_kỳ_trước']]
                         .rename(columns={'ClientName': 'Tên Khách Hàng', 'Đơn_kỳ_trước': 'Số đơn kỳ trước', 'KG_kỳ_trước': 'Khối lượng kỳ trước (KG)'})
                         .style.format({'Số đơn kỳ trước': '{:,.0f}', 'Khối lượng kỳ trước (KG)': '{:,.0f}'}),
-                        use_container_width=True
+                        use_container_width=True,
+                        hide_index=True
                     )
                 else:
                     st.info("Không có khách hàng nào ngừng gửi hàng.")
@@ -1099,7 +1149,8 @@ with tab_growth:
                         'KG_kỳ_này': '{:,.0f}',
                         'Thay đổi KG': '{:+,.0f}'
                     }),
-                    use_container_width=True
+                    use_container_width=True,
+                    hide_index=True
                 )
         else:
             st.info("Cần ít nhất 2 kỳ thời gian để so sánh biến động khách hàng.")
@@ -1127,7 +1178,8 @@ with tab_growth:
                 'Đơn TB / KH': '{:,.1f}',
                 'KG TB / KH': '{:,.1f}'
             }, na_rep="-"),
-            use_container_width=True
+            use_container_width=True,
+            hide_index=True
         )
 
 # ==================== TAB 3: ONTIME XUẤT HÀNG ====================
@@ -1206,7 +1258,7 @@ with tab2:
                 Ontime=('Ontime', 'sum')
             ).reset_index()
             summary_table['Tỷ_lệ_Ontime'] = (summary_table['Ontime'] / summary_table['Tổng_đơn'] * 100).round(1)
-            st.dataframe(summary_table.style.format({'Tỷ_lệ_Ontime': '{:.1f}%'}), use_container_width=True)
+            st.dataframe(summary_table.style.format({'Tỷ_lệ_Ontime': '{:.1f}%'}), use_container_width=True, hide_index=True)
             
         def render_ontime_wh(df_wh_ot, name):
             if df_wh_ot.empty:
@@ -1239,14 +1291,14 @@ with tab2:
             ).reset_index()
             summary_table_wh['Tỷ_lệ_Ontime'] = (summary_table_wh['Ontime'] / summary_table_wh['Tổng_đơn'] * 100).round(1)
             st.markdown("**Bảng tổng hợp Ontime theo kỳ:**")
-            st.dataframe(summary_table_wh.style.format({'Tỷ_lệ_Ontime': '{:.1f}%'}), use_container_width=True)
+            st.dataframe(summary_table_wh.style.format({'Tỷ_lệ_Ontime': '{:.1f}%'}), use_container_width=True, hide_index=True)
                 
             st.markdown("**Chi tiết các đơn Trễ (Late):**")
             df_late = df_wh_ot[~df_wh_ot['Ontime']]
             cols_show = ['NgayNhap', 'MaDonGoc', 'ThoiGianNhap', 'DeadlineXuat', 'DaXuat', 'ThoiGianXuat', 'Ontime']
             cols_show = [c for c in cols_show if c in df_late.columns]
             if not df_late.empty:
-                st.dataframe(df_late[cols_show].sort_values('NgayNhap', ascending=False), use_container_width=True)
+                st.dataframe(df_late[cols_show].sort_values('NgayNhap', ascending=False), use_container_width=True, hide_index=True)
             else:
                 st.success("Tuyệt vời! Không có đơn nào bị trễ.")
             
@@ -1316,10 +1368,10 @@ with tab3:
                     ).reset_index().sort_values('TongSoDon', ascending=False)
                     
                     st.markdown(f"**Kết quả:** Tìm thấy **{len(summary)}** mã sort được dùng chung cho nhiều tỉnh.")
-                    st.dataframe(summary.rename(columns={'sort_code': 'Mã Sort', 'TinhGiao': 'Các Tỉnh Giao', 'SoTinh': 'Số lượng Tỉnh', 'TongSoDon': 'Tổng Số Đơn'}).style.format("{:,.0f}", subset=['Tổng Số Đơn']), use_container_width=True)
+                    st.dataframe(summary.rename(columns={'sort_code': 'Mã Sort', 'TinhGiao': 'Các Tỉnh Giao', 'SoTinh': 'Số lượng Tỉnh', 'TongSoDon': 'Tổng Số Đơn'}).style.format("{:,.0f}", subset=['Tổng Số Đơn']), use_container_width=True, hide_index=True)
                     
                     st.subheader("3. Chi tiết phân bổ theo Tỉnh")
-                    st.dataframe(df_shared.rename(columns={'sort_code': 'Mã Sort', 'TinhGiao': 'Tỉnh Giao', 'SoLuongDon': 'Số lượng Đơn'}).sort_values(['sort_code', 'Số lượng Đơn'], ascending=[True, False]).style.format("{:,.0f}", subset=['Số lượng Đơn']), use_container_width=True)
+                    st.dataframe(df_shared.rename(columns={'sort_code': 'Mã Sort', 'TinhGiao': 'Tỉnh Giao', 'SoLuongDon': 'Số lượng Đơn'}).sort_values(['sort_code', 'Số lượng Đơn'], ascending=[True, False]).style.format("{:,.0f}", subset=['Số lượng Đơn']), use_container_width=True, hide_index=True)
                     
         except Exception as e:
             st.error(f"Lỗi khi đọc file: {e}")
