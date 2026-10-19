@@ -173,6 +173,7 @@ def load_truck_schedule():
 
     # 2. Dự phòng đọc file cục bộ đã đồng bộ
     route_files = [
+        'Update VT B2B 19.10.xlsx',
         'LichTaiUpdate7Ngay.xlsx',
         'data chuyến Truck 7 ngày 11.09.xlsx',
         'data chuyến cố định 7 ngày gần nhất 9.9.xlsx',
