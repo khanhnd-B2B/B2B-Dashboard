@@ -1044,9 +1044,39 @@ with tab_growth:
         st.markdown("---")
 
         # 3. PHÂN TÍCH CHI TIẾT KHÁCH HÀNG (KỲ NÀY VS KỲ TRƯỚC)
-        st.markdown(f"### 👥 Phân Tích Biến Động Khách Hàng (Kỳ **{latest_period_name}** vs Kỳ Trước)")
+        col_client_hdr, col_client_metric = st.columns([3, 1])
+        with col_client_hdr:
+            st.markdown(f"### 👥 Phân Tích Biến Động Khách Hàng (Kỳ **{latest_period_name}** vs Kỳ Trước)")
+        with col_client_metric:
+            client_metric = st.radio(
+                "Đo lường theo:",
+                options=["Số đơn", "Khối lượng (KG)"],
+                horizontal=True,
+                key="client_sort_metric",
+                help="Chọn tiêu chí xếp hạng Top KH: theo lượng đơn hay khối lượng (kg)"
+            )
 
         if df_client_changes is not None and not df_client_changes.empty:
+            # Xác định cột sort và cột hiển thị dựa trên metric đang chọn
+            if client_metric == "Số đơn":
+                sort_col_grow = 'Thay đổi đơn'
+                sort_col_drop = 'Thay đổi đơn'
+                sort_col_new  = 'Đơn_kỳ_này'
+                sort_col_churn = 'Đơn_kỳ_trước'
+                cols_grow = ['ClientName', 'Đơn_kỳ_trước', 'Đơn_kỳ_này', 'Thay đổi đơn', '% Tăng đơn', 'KG_kỳ_trước', 'KG_kỳ_này', 'Thay đổi KG']
+                fmt_grow  = {'Đơn_kỳ_trước': '{:,.0f}', 'Đơn_kỳ_này': '{:,.0f}', 'Thay đổi đơn': '{:+,.0f}', '% Tăng đơn': '{:+.1f}%', 'KG_kỳ_trước': '{:,.0f}', 'KG_kỳ_này': '{:,.0f}', 'Thay đổi KG': '{:+,.0f}'}
+                title_grow  = "**Top khách hàng tăng trưởng lượng đơn lớn nhất:**"
+                title_drop  = "⚠️ **Khách hàng có lượng đơn sụt giảm nhiều nhất (Cần theo dõi & CSKH):**"
+            else:
+                sort_col_grow = 'Thay đổi KG'
+                sort_col_drop = 'Thay đổi KG'
+                sort_col_new  = 'KG_kỳ_này'
+                sort_col_churn = 'KG_kỳ_trước'
+                cols_grow = ['ClientName', 'KG_kỳ_trước', 'KG_kỳ_này', 'Thay đổi KG', 'Đơn_kỳ_trước', 'Đơn_kỳ_này', 'Thay đổi đơn', '% Tăng đơn']
+                fmt_grow  = {'KG_kỳ_trước': '{:,.0f}', 'KG_kỳ_này': '{:,.0f}', 'Thay đổi KG': '{:+,.0f}', 'Đơn_kỳ_trước': '{:,.0f}', 'Đơn_kỳ_này': '{:,.0f}', 'Thay đổi đơn': '{:+,.0f}', '% Tăng đơn': '{:+.1f}%'}
+                title_grow  = "**Top khách hàng tăng trưởng khối lượng (KG) lớn nhất:**"
+                title_drop  = "⚠️ **Khách hàng có khối lượng (KG) sụt giảm nhiều nhất (Cần theo dõi & CSKH):**"
+
             c_stat1, c_stat2, c_stat3, c_stat4 = st.columns(4)
             n_growing = (df_client_changes['Trạng thái'] == 'Tăng trưởng').sum()
             n_declining = (df_client_changes['Trạng thái'] == 'Sụt giảm').sum()
@@ -1067,19 +1097,13 @@ with tab_growth:
             ])
 
             with client_tab1:
-                df_grow = df_client_changes[df_client_changes['Trạng thái'] == 'Tăng trưởng'].sort_values('Thay đổi đơn', ascending=False)
+                df_grow = df_client_changes[df_client_changes['Trạng thái'] == 'Tăng trưởng'].sort_values(sort_col_grow, ascending=False)
                 if not df_grow.empty:
-                    st.markdown("**Top khách hàng tăng trưởng lượng đơn lớn nhất:**")
+                    st.markdown(title_grow)
                     st.dataframe(
-                        df_grow[['ClientName', 'Đơn_kỳ_trước', 'Đơn_kỳ_này', 'Thay đổi đơn', '% Tăng đơn', 'Thay đổi KG']]
+                        df_grow[cols_grow]
                         .rename(columns={'ClientName': 'Tên Khách Hàng'})
-                        .style.format({
-                            'Đơn_kỳ_trước': '{:,.0f}',
-                            'Đơn_kỳ_này': '{:,.0f}',
-                            'Thay đổi đơn': '{:+,.0f}',
-                            '% Tăng đơn': '{:+.1f}%',
-                            'Thay đổi KG': '{:+,.0f}'
-                        }),
+                        .style.format(fmt_grow),
                         use_container_width=True,
                         hide_index=True
                     )
@@ -1087,19 +1111,13 @@ with tab_growth:
                     st.info("Không có khách hàng nào tăng trưởng trong kỳ này.")
 
             with client_tab2:
-                df_drop = df_client_changes[df_client_changes['Trạng thái'] == 'Sụt giảm'].sort_values('Thay đổi đơn')
+                df_drop = df_client_changes[df_client_changes['Trạng thái'] == 'Sụt giảm'].sort_values(sort_col_drop)
                 if not df_drop.empty:
-                    st.markdown("⚠️ **Khách hàng có lượng đơn sụt giảm nhiều nhất (Cần theo dõi & CSKH):**")
+                    st.markdown(title_drop)
                     st.dataframe(
-                        df_drop[['ClientName', 'Đơn_kỳ_trước', 'Đơn_kỳ_này', 'Thay đổi đơn', '% Tăng đơn', 'Thay đổi KG']]
+                        df_drop[cols_grow]
                         .rename(columns={'ClientName': 'Tên Khách Hàng'})
-                        .style.format({
-                            'Đơn_kỳ_trước': '{:,.0f}',
-                            'Đơn_kỳ_này': '{:,.0f}',
-                            'Thay đổi đơn': '{:+,.0f}',
-                            '% Tăng đơn': '{:+.1f}%',
-                            'Thay đổi KG': '{:+,.0f}'
-                        }),
+                        .style.format(fmt_grow),
                         use_container_width=True,
                         hide_index=True
                     )
@@ -1107,7 +1125,7 @@ with tab_growth:
                     st.info("Không có khách hàng nào bị sụt giảm trong kỳ này.")
 
             with client_tab3:
-                df_new_list = df_client_changes[df_client_changes['Trạng thái'] == 'Mới xuất hiện'].sort_values('Đơn_kỳ_này', ascending=False)
+                df_new_list = df_client_changes[df_client_changes['Trạng thái'] == 'Mới xuất hiện'].sort_values(sort_col_new, ascending=False)
                 if not df_new_list.empty:
                     st.markdown("**Khách hàng mới phát sinh đơn trong kỳ:**")
                     st.dataframe(
@@ -1121,7 +1139,7 @@ with tab_growth:
                     st.info("Không có khách hàng mới nào trong kỳ này.")
 
             with client_tab4:
-                df_churn_list = df_client_changes[df_client_changes['Trạng thái'] == 'Ngừng gửi hàng'].sort_values('Đơn_kỳ_trước', ascending=False)
+                df_churn_list = df_client_changes[df_client_changes['Trạng thái'] == 'Ngừng gửi hàng'].sort_values(sort_col_churn, ascending=False)
                 if not df_churn_list.empty:
                     st.markdown("⚠️ **Khách hàng có gửi kỳ trước nhưng kỳ này chưa có đơn:**")
                     st.dataframe(
