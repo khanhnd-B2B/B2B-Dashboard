@@ -878,7 +878,13 @@ with tab_growth:
             index=0 if freq == 'D' else (1 if freq == 'W' else 2)
         )
     with col_g2:
-        growth_metric_view = st.radio("📊 Chỉ số trọng tâm:", ["Số đơn", "Khối lượng (kg)"], horizontal=True, key="growth_metric_view")
+        growth_metric_view = st.radio(
+            "📊 Chỉ số trọng tâm:",
+            options=["Tất cả (Cả Đơn & KG)", "Số đơn", "Khối lượng (kg)"],
+            horizontal=True,
+            index=0,
+            key="growth_metric_view"
+        )
 
     g_freq_code = 'D' if 'Ngày' in growth_freq_label else ('W' if 'Tuần' in growth_freq_label else 'M')
     g_freq_unit = 'ngày' if g_freq_code == 'D' else ('tuần' if g_freq_code == 'W' else 'tháng')
@@ -894,7 +900,7 @@ with tab_growth:
         latest_period_name = latest_row['Kỳ']
 
         st.markdown(f"### 🎯 Chỉ số kỳ gần nhất: **{latest_period_name}** *(so với {g_freq_unit} liền trước)*")
-        kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5 = st.columns(5)
+        kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6 = st.columns(6)
 
         # Đơn
         don_val = latest_row['Số đơn']
@@ -925,6 +931,11 @@ with tab_growth:
         tb_val = latest_row['Đơn TB / KH']
         kpi_c5.metric("📊 Đơn TB / KH", f"{tb_val:,.1f} đơn")
 
+        # KG TB / Đơn & KG TB / KH
+        kg_tb_kh = latest_row.get('KG TB / KH', (kg_val / kh_val) if kh_val > 0 else 0)
+        kg_tb_don = (kg_val / don_val) if don_val > 0 else 0
+        kpi_c6.metric("⚖️ KG TB / Đơn", f"{kg_tb_don:,.1f} kg", f"TB/KH: {kg_tb_kh:,.0f} kg")
+
         st.markdown("---")
 
         # 2. BIỂU ĐỒ XU HƯỚNG VÀ TỐC ĐỘ TĂNG TRƯỞNG
@@ -939,40 +950,157 @@ with tab_growth:
         ])
 
         with chart_tab1:
-            col_ch1, col_ch2 = st.columns(2)
-            with col_ch1:
-                y_measure = 'Số đơn' if growth_metric_view == 'Số đơn' else 'Khối lượng (kg)'
+            def build_don_charts():
                 fig_prod = px.bar(
                     df_chart_data,
                     x='Kỳ',
-                    y=y_measure,
+                    y='Số đơn',
                     text_auto='.2s',
-                    title=f"Sản lượng {y_measure.lower()} qua các {g_freq_unit}",
-                    color_discrete_sequence=['#004b8b']
+                    title=f"Sản lượng số đơn qua các {g_freq_unit}",
+                    color_discrete_sequence=['#004b8b'],
+                    custom_data=['Số đơn', 'Khối lượng (kg)', 'Đơn TB / KH', 'KG TB / KH']
                 )
-                fig_prod.update_traces(textposition='outside')
-                fig_prod.update_layout(xaxis_title="Thời gian", yaxis_title=y_measure)
+                fig_prod.update_traces(
+                    textposition='outside',
+                    hovertemplate="<b>%{x}</b><br>📦 Số đơn: %{customdata[0]:,.0f} đơn<br>⚖️ Khối lượng: %{customdata[1]:,.0f} kg<br>📊 Đơn TB/KH: %{customdata[2]:,.1f}<br>⚖️ KG TB/KH: %{customdata[3]:,.1f} kg<extra></extra>"
+                )
+                fig_prod.update_layout(xaxis_title="Thời gian", yaxis_title="Số đơn")
                 fig_prod.update_xaxes(categoryorder='array', categoryarray=df_chart_data['Kỳ'].unique())
-                st.plotly_chart(fig_prod, use_container_width=True)
 
-            with col_ch2:
-                pct_col = '% Tăng đơn' if growth_metric_view == 'Số đơn' else '% Tăng KG'
-                df_growth_clean = df_chart_data.dropna(subset=[pct_col]).copy()
-                df_growth_clean['Màu'] = df_growth_clean[pct_col].apply(lambda x: 'Tăng trưởng (+)' if x >= 0 else 'Sụt giảm (-)')
+                df_clean = df_chart_data.dropna(subset=['% Tăng đơn']).copy()
+                df_clean['Màu'] = df_clean['% Tăng đơn'].apply(lambda x: 'Tăng trưởng (+)' if x >= 0 else 'Sụt giảm (-)')
                 fig_pct = px.bar(
-                    df_growth_clean,
+                    df_clean,
                     x='Kỳ',
-                    y=pct_col,
+                    y='% Tăng đơn',
                     color='Màu',
                     color_discrete_map={'Tăng trưởng (+)': '#2ca02c', 'Sụt giảm (-)': '#d62728'},
-                    title=f"Tốc độ tăng trưởng % ({pct_col}) so với kỳ trước",
-                    text_auto='.1f'
+                    title=f"Tốc độ tăng trưởng % (% Tăng đơn) so với kỳ trước",
+                    text_auto='.1f',
+                    custom_data=['Thay đổi đơn', 'Số đơn']
                 )
-                fig_pct.update_traces(textposition='outside')
+                fig_pct.update_traces(
+                    textposition='outside',
+                    hovertemplate="<b>%{x}</b><br>Tăng trưởng đơn: %{y:+.1f}%<br>Thay đổi: %{customdata[0]:+,.0f} đơn<br>Tổng đơn: %{customdata[1]:,.0f} đơn<extra></extra>"
+                )
                 fig_pct.add_hline(y=0, line_dash="dash", line_color="gray")
                 fig_pct.update_layout(xaxis_title="Thời gian", yaxis_title="% Thay đổi")
-                fig_pct.update_xaxes(categoryorder='array', categoryarray=df_growth_clean['Kỳ'].unique())
-                st.plotly_chart(fig_pct, use_container_width=True)
+                fig_pct.update_xaxes(categoryorder='array', categoryarray=df_clean['Kỳ'].unique())
+                return fig_prod, fig_pct
+
+            def build_kg_charts():
+                fig_prod = px.bar(
+                    df_chart_data,
+                    x='Kỳ',
+                    y='Khối lượng (kg)',
+                    text_auto='.2s',
+                    title=f"Sản lượng khối lượng (kg) qua các {g_freq_unit}",
+                    color_discrete_sequence=['#0284c7'],
+                    custom_data=['Số đơn', 'Khối lượng (kg)', 'Đơn TB / KH', 'KG TB / KH']
+                )
+                fig_prod.update_traces(
+                    textposition='outside',
+                    hovertemplate="<b>%{x}</b><br>⚖️ Khối lượng: %{customdata[1]:,.0f} kg<br>📦 Số đơn: %{customdata[0]:,.0f} đơn<br>📊 Đơn TB/KH: %{customdata[2]:,.1f}<br>⚖️ KG TB/KH: %{customdata[3]:,.1f} kg<extra></extra>"
+                )
+                fig_prod.update_layout(xaxis_title="Thời gian", yaxis_title="Khối lượng (kg)")
+                fig_prod.update_xaxes(categoryorder='array', categoryarray=df_chart_data['Kỳ'].unique())
+
+                df_clean = df_chart_data.dropna(subset=['% Tăng KG']).copy()
+                df_clean['Màu'] = df_clean['% Tăng KG'].apply(lambda x: 'Tăng trưởng (+)' if x >= 0 else 'Sụt giảm (-)')
+                fig_pct = px.bar(
+                    df_clean,
+                    x='Kỳ',
+                    y='% Tăng KG',
+                    color='Màu',
+                    color_discrete_map={'Tăng trưởng (+)': '#2ca02c', 'Sụt giảm (-)': '#d62728'},
+                    title=f"Tốc độ tăng trưởng % (% Tăng KG) so với kỳ trước",
+                    text_auto='.1f',
+                    custom_data=['Thay đổi KG', 'Khối lượng (kg)']
+                )
+                fig_pct.update_traces(
+                    textposition='outside',
+                    hovertemplate="<b>%{x}</b><br>Tăng trưởng KG: %{y:+.1f}%<br>Thay đổi: %{customdata[0]:+,.0f} kg<br>Tổng KG: %{customdata[1]:,.0f} kg<extra></extra>"
+                )
+                fig_pct.add_hline(y=0, line_dash="dash", line_color="gray")
+                fig_pct.update_layout(xaxis_title="Thời gian", yaxis_title="% Thay đổi")
+                fig_pct.update_xaxes(categoryorder='array', categoryarray=df_clean['Kỳ'].unique())
+                return fig_prod, fig_pct
+
+            def build_combo_chart():
+                from plotly.subplots import make_subplots
+                import plotly.graph_objects as go
+                fig_combo = make_subplots(specs=[[{"secondary_y": True}]])
+                fig_combo.add_trace(
+                    go.Bar(
+                        x=df_chart_data['Kỳ'],
+                        y=df_chart_data['Số đơn'],
+                        name="Số đơn",
+                        marker_color="#004b8b",
+                        opacity=0.85,
+                        text=df_chart_data['Số đơn'],
+                        texttemplate="%{text:,.0f}",
+                        textposition="outside"
+                    ),
+                    secondary_y=False
+                )
+                fig_combo.add_trace(
+                    go.Scatter(
+                        x=df_chart_data['Kỳ'],
+                        y=df_chart_data['Khối lượng (kg)'],
+                        name="Khối lượng (kg)",
+                        mode="lines+markers",
+                        marker=dict(size=7, color="#ff7f0e"),
+                        line=dict(color="#ff7f0e", width=2.5),
+                        text=df_chart_data['Khối lượng (kg)'],
+                        hovertemplate="Khối lượng: %{text:,.0f} kg<extra></extra>"
+                    ),
+                    secondary_y=True
+                )
+                fig_combo.update_layout(
+                    title=f"🔄 Tương quan kép: Số đơn (Cột) & Khối lượng kg (Đường) qua các {g_freq_unit}",
+                    xaxis_title=f"Thời gian ({g_freq_unit})",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    hovermode="x unified"
+                )
+                fig_combo.update_yaxes(title_text="Số đơn", secondary_y=False)
+                fig_combo.update_yaxes(title_text="Khối lượng (kg)", secondary_y=True)
+                fig_combo.update_xaxes(categoryorder='array', categoryarray=df_chart_data['Kỳ'].unique())
+                return fig_combo
+
+            if growth_metric_view == "Số đơn":
+                col_ch1, col_ch2 = st.columns(2)
+                f_prod, f_pct = build_don_charts()
+                with col_ch1:
+                    st.plotly_chart(f_prod, use_container_width=True)
+                with col_ch2:
+                    st.plotly_chart(f_pct, use_container_width=True)
+            elif growth_metric_view == "Khối lượng (kg)":
+                col_ch1, col_ch2 = st.columns(2)
+                f_prod, f_pct = build_kg_charts()
+                with col_ch1:
+                    st.plotly_chart(f_prod, use_container_width=True)
+                with col_ch2:
+                    st.plotly_chart(f_pct, use_container_width=True)
+            else: # Tất cả (Cả Đơn & KG)
+                st.markdown(f"##### 📦 Biến động Lượng Đơn theo {g_freq_unit}")
+                col_d1, col_d2 = st.columns(2)
+                f_prod_d, f_pct_d = build_don_charts()
+                with col_d1:
+                    st.plotly_chart(f_prod_d, use_container_width=True)
+                with col_d2:
+                    st.plotly_chart(f_pct_d, use_container_width=True)
+
+                st.markdown(f"##### ⚖️ Biến động Khối Lượng (KG) theo {g_freq_unit}")
+                col_k1, col_k2 = st.columns(2)
+                f_prod_k, f_pct_k = build_kg_charts()
+                with col_k1:
+                    st.plotly_chart(f_prod_k, use_container_width=True)
+                with col_k2:
+                    st.plotly_chart(f_pct_k, use_container_width=True)
+
+                with st.expander(f"🔄 Xem Biểu Đồ Tương Quan Trục Kép (Số đơn & Khối lượng song song)", expanded=True):
+                    f_combo = build_combo_chart()
+                    st.plotly_chart(f_combo, use_container_width=True)
 
         with chart_tab2:
             col_kh1, col_kh2 = st.columns(2)
@@ -1024,23 +1152,62 @@ with tab_growth:
                     Số_KH=('ClientName', 'nunique')
                 ).reset_index().sort_values('Period_Calc')
 
-
-
                 if not wh_grouped.empty:
-                    y_wh_metric = 'Số_đơn' if growth_metric_view == 'Số đơn' else 'Tổng_KG'
-                    fig_wh_comp = px.line(
-                        wh_grouped,
-                        x='Period_Label',
-                        y=y_wh_metric,
-                        color='Kho',
-                        markers=True,
-                        title=f"So sánh sản lượng {y_wh_metric.replace('_', ' ').lower()} giữa Đài Tư và Hưng Yên",
-                        custom_data=['Số_đơn', 'Tổng_KG', 'Số_KH']
-                    )
                     sorted_wh_labels = wh_grouped.drop_duplicates('Period_Calc').sort_values('Period_Calc')['Period_Label'].unique()
-                    fig_wh_comp.update_xaxes(categoryorder='array', categoryarray=sorted_wh_labels)
-                    fig_wh_comp.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Số đơn: %{customdata[0]:,.0f}<br>Tổng KG: %{customdata[1]:,.0f}<br>Số KH: %{customdata[2]}")
-                    st.plotly_chart(fig_wh_comp, use_container_width=True)
+                    if growth_metric_view == "Số đơn":
+                        fig_wh_comp = px.line(
+                            wh_grouped,
+                            x='Period_Label',
+                            y='Số_đơn',
+                            color='Kho',
+                            markers=True,
+                            title=f"So sánh sản lượng số đơn giữa Đài Tư và Hưng Yên theo {g_freq_unit}",
+                            custom_data=['Số_đơn', 'Tổng_KG', 'Số_KH']
+                        )
+                        fig_wh_comp.update_xaxes(categoryorder='array', categoryarray=sorted_wh_labels)
+                        fig_wh_comp.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Số đơn: %{customdata[0]:,.0f}<br>Tổng KG: %{customdata[1]:,.0f}<br>Số KH: %{customdata[2]}")
+                        st.plotly_chart(fig_wh_comp, use_container_width=True)
+                    elif growth_metric_view == "Khối lượng (kg)":
+                        fig_wh_comp = px.line(
+                            wh_grouped,
+                            x='Period_Label',
+                            y='Tổng_KG',
+                            color='Kho',
+                            markers=True,
+                            title=f"So sánh sản lượng khối lượng (KG) giữa Đài Tư và Hưng Yên theo {g_freq_unit}",
+                            custom_data=['Số_đơn', 'Tổng_KG', 'Số_KH']
+                        )
+                        fig_wh_comp.update_xaxes(categoryorder='array', categoryarray=sorted_wh_labels)
+                        fig_wh_comp.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Số đơn: %{customdata[0]:,.0f}<br>Tổng KG: %{customdata[1]:,.0f}<br>Số KH: %{customdata[2]}")
+                        st.plotly_chart(fig_wh_comp, use_container_width=True)
+                    else: # Tất cả (Cả Đơn & KG)
+                        col_wh1, col_wh2 = st.columns(2)
+                        with col_wh1:
+                            fig_wh_don = px.line(
+                                wh_grouped,
+                                x='Period_Label',
+                                y='Số_đơn',
+                                color='Kho',
+                                markers=True,
+                                title=f"So sánh sản lượng Số Đơn (Đài Tư vs Hưng Yên) theo {g_freq_unit}",
+                                custom_data=['Số_đơn', 'Tổng_KG', 'Số_KH']
+                            )
+                            fig_wh_don.update_xaxes(categoryorder='array', categoryarray=sorted_wh_labels)
+                            fig_wh_don.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Số đơn: %{customdata[0]:,.0f}<br>Tổng KG: %{customdata[1]:,.0f}<br>Số KH: %{customdata[2]}")
+                            st.plotly_chart(fig_wh_don, use_container_width=True)
+                        with col_wh2:
+                            fig_wh_kg = px.line(
+                                wh_grouped,
+                                x='Period_Label',
+                                y='Tổng_KG',
+                                color='Kho',
+                                markers=True,
+                                title=f"So sánh sản lượng Khối Lượng KG (Đài Tư vs Hưng Yên) theo {g_freq_unit}",
+                                custom_data=['Số_đơn', 'Tổng_KG', 'Số_KH']
+                            )
+                            fig_wh_kg.update_xaxes(categoryorder='array', categoryarray=sorted_wh_labels)
+                            fig_wh_kg.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Số đơn: %{customdata[0]:,.0f}<br>Tổng KG: %{customdata[1]:,.0f}<br>Số KH: %{customdata[2]}")
+                            st.plotly_chart(fig_wh_kg, use_container_width=True)
 
         st.markdown("---")
 
