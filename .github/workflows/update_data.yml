@@ -4,7 +4,8 @@ on:
   schedule:
     # Chạy mỗi 2 tiếng trong ngày (giờ VN từ 08:15 đến 22:15): 01:15, 03:15, 05:15, 07:15, 09:15, 11:15, 13:15, 15:15 UTC
     # Phút 15 tránh tắc nghẽn hàng đợi GitHub Actions (vốn hay bị nghẽn ở phút 00 và 30)
-    - cron: '15 1,3,5,7,9,11,13,15 * * *'
+    # Chạy tự động mỗi 1 giờ (24/7)
+    - cron: '15 * * * *'
   workflow_dispatch: # Cho phep bam chay thu cong tren GitHub
 
 jobs:
