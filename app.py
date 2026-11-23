@@ -1130,10 +1130,11 @@ with tab_growth:
         
         df_chart_data = df_growth_summary.copy()
 
-        chart_tab1, chart_tab2, chart_tab3 = st.tabs([
+        chart_tab1, chart_tab2, chart_tab3, chart_tab4 = st.tabs([
             "📈 Xu hướng Sản lượng & Tăng trưởng (%)",
             "👥 Biến động Số lượng Khách hàng",
-            "🏭 So sánh Tăng trưởng theo Kho (Đài Tư vs Hưng Yên)"
+            "🏭 So sánh Tăng trưởng theo Kho (Đài Tư vs Hưng Yên)",
+            "🚚 So sánh Tự Lấy theo Kho (Đài Tư vs Hưng Yên)"
         ])
 
         with chart_tab1:
@@ -1395,6 +1396,63 @@ with tab_growth:
                             fig_wh_kg.update_xaxes(categoryorder='array', categoryarray=sorted_wh_labels)
                             fig_wh_kg.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Số đơn: %{customdata[0]:,.0f}<br>Tổng KG: %{customdata[1]:,.0f}<br>Số KH: %{customdata[2]}")
                             st.plotly_chart(fig_wh_kg, use_container_width=True)
+
+        with chart_tab4:
+            if 'KhoNhap' in df_filtered.columns and 'NguonNhap' in df_filtered.columns:
+                df_tl_growth = df_filtered.copy()
+                if g_freq_code == 'D':
+                    df_tl_growth['Period_Calc'] = df_tl_growth['NgayNhap'].dt.to_period('D').dt.start_time
+                    df_tl_growth['Period_Label'] = df_tl_growth['NgayNhap'].dt.strftime('%d/%m/%Y')
+                elif g_freq_code == 'W':
+                    df_tl_growth['Period_Calc'] = df_tl_growth['NgayNhap'].dt.to_period('W').dt.start_time
+                    df_tl_growth['Period_Label'] = df_tl_growth['NgayNhap'].dt.strftime('Tuần %W/%Y')
+                else:
+                    df_tl_growth['Period_Calc'] = df_tl_growth['NgayNhap'].dt.to_period('M').dt.start_time
+                    df_tl_growth['Period_Label'] = df_tl_growth['NgayNhap'].dt.strftime('Tháng %m/%Y')
+
+                df_tl_growth['Kho'] = df_tl_growth['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
+                df_tl_growth = df_tl_growth[df_tl_growth['Kho'].isin(['Đài Tư', 'Hưng Yên'])]
+                df_tl_growth['Is_TuLay'] = df_tl_growth['NguonNhap'].str.contains('Tự kho lấy', case=False, na=False)
+
+                df_tl_only_g = df_tl_growth[df_tl_growth['Is_TuLay']]
+                tl_grouped = df_tl_only_g.groupby(['Period_Calc', 'Period_Label', 'Kho']).agg(
+                    Đơn_tự_lấy=('MaDonGoc', 'nunique'),
+                    KG_tự_lấy=('KhoiLuongKG', 'sum'),
+                    Số_KH_tự_lấy=('ClientName', 'nunique')
+                ).reset_index().sort_values('Period_Calc')
+
+                if not tl_grouped.empty:
+                    sorted_tl_labels = tl_grouped.drop_duplicates('Period_Calc').sort_values('Period_Calc')['Period_Label'].unique()
+                    st.markdown(f"##### 🚚 Biến động Lượng Hàng Tự Lấy Giữa Đài Tư & Hưng Yên theo {g_freq_unit}")
+                    col_tl_g1, col_tl_g2 = st.columns(2)
+                    with col_tl_g1:
+                        fig_tl_don = px.line(
+                            tl_grouped,
+                            x='Period_Label',
+                            y='Đơn_tự_lấy',
+                            color='Kho',
+                            markers=True,
+                            title=f"Số đơn Tự Lấy theo {g_freq_unit} (Đài Tư vs Hưng Yên)",
+                            custom_data=['Đơn_tự_lấy', 'KG_tự_lấy', 'Số_KH_tự_lấy']
+                        )
+                        fig_tl_don.update_xaxes(categoryorder='array', categoryarray=sorted_tl_labels)
+                        fig_tl_don.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Đơn tự lấy: %{customdata[0]:,.0f}<br>KG tự lấy: %{customdata[1]:,.0f}<br>Số KH tự lấy: %{customdata[2]}")
+                        st.plotly_chart(fig_tl_don, use_container_width=True)
+                    with col_tl_g2:
+                        fig_tl_kg = px.line(
+                            tl_grouped,
+                            x='Period_Label',
+                            y='KG_tự_lấy',
+                            color='Kho',
+                            markers=True,
+                            title=f"Khối lượng (KG) Tự Lấy theo {g_freq_unit} (Đài Tư vs Hưng Yên)",
+                            custom_data=['Đơn_tự_lấy', 'KG_tự_lấy', 'Số_KH_tự_lấy']
+                        )
+                        fig_tl_kg.update_xaxes(categoryorder='array', categoryarray=sorted_tl_labels)
+                        fig_tl_kg.update_traces(hovertemplate="%{fullData.name}<br>%{x}<br>Đơn tự lấy: %{customdata[0]:,.0f}<br>KG tự lấy: %{customdata[1]:,.0f}<br>Số KH tự lấy: %{customdata[2]}")
+                        st.plotly_chart(fig_tl_kg, use_container_width=True)
+                else:
+                    st.info("Không có dữ liệu đơn tự lấy trong khoảng thời gian đã chọn.")
 
         st.markdown("---")
 
