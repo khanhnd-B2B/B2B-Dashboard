@@ -1,7 +1,7 @@
 import asyncio
 from playwright.async_api import async_playwright
 
-DASHBOARD_URL="https://b2b-dashboard-hydt.streamlit.app"
+DASHBOARD_URL = "https://ghn-b2b.streamlit.app"
 
 
 async def main():

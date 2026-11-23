@@ -162,7 +162,7 @@ def main():
     else:
         msg += f'- Không có đơn phát sinh cần tính Ontime.\n'
 
-    msg += f'\n👉 Xem chi tiết Dashboard: https://b2b-dashboard-hydt.streamlit.app'
+    msg += f'\n👉 Xem chi tiết Dashboard: https://ghn-b2b.streamlit.app'
 
     send_telegram_message(msg)
 

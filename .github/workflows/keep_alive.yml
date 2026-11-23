@@ -2,26 +2,34 @@ name: Keep Streamlit App Awake
 
 on:
   schedule:
-    # Chạy mỗi 3 tiếng cả ngày lẫn đêm (00:18, 03:18, 06:18, 09:18, 12:18, 15:18, 18:18, 21:18 UTC)
-    # Streamlit Cloud chỉ rơi vào trạng thái ngủ khi không có traffic sau 72 giờ liên tục.
-    # Ping định kỳ mỗi 3 tiếng đảm bảo app KHÔNG BAO GIỜ bị ngủ đông (Sleep).
-    - cron: '18 */3 * * *'
+    # Chạy mỗi 2 tiếng liên tục 24/7 (00:20, 02:20, 04:20, 06:20, 08:20, 10:20, 12:20, 14:20, 16:20, 18:20, 20:20, 22:20 UTC)
+    # Tự động mở trình duyệt headless Playwright truy cập https://ghn-b2b.streamlit.app
+    # Nếu app bị ngủ đông, script sẽ tự động click nút "Yes, get this app back up!" để đánh thức app ngay lập tức.
+    - cron: '20 */2 * * *'
   workflow_dispatch: # Cho phép bấm chạy thủ công trên GitHub Actions bất kỳ lúc nào
 
 jobs:
-  ping-keep-alive:
+  keep-awake:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping GHN B2B Streamlit App
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
         run: |
-          echo "Pinging https://ghn-b2b.streamlit.app/ ..."
-          status_code=$(curl -s -o /dev/null -w "%{http_code}" -L --max-time 30 https://ghn-b2b.streamlit.app/ || true)
-          echo "HTTP Status Code: $status_code"
-          if [ "$status_code" = "200" ] || [ "$status_code" = "303" ]; then
-            echo "Success: App is active and awake!"
-          else
-            echo "App pinged with response code: $status_code"
-          fi
-          # Ping backup Render bot
+          pip install playwright requests
+          playwright install --with-deps chromium
+
+      - name: Run Playwright Keep-Awake Bot
+        run: |
+          python keep_awake.py
+
+      - name: Ping Backup Services
+        run: |
           curl -sL --max-time 15 https://b2b-ton-bot.onrender.com > /dev/null || true
-          echo "Keep-alive ping completed."
+          echo "Keep-alive finished successfully."
