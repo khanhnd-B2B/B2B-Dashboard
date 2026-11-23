@@ -72,7 +72,7 @@ jobs:
 
       - name: Ping Streamlit Dashboard & Render Bot (Keep Awake)
         run: |
-          curl -sL https://b2b-dashboard-dsgkivhypxmlqtjujsic2d.streamlit.app > /dev/null || true
+          curl -sL https://ghn-b2b.streamlit.app/ > /dev/null || true
           curl -sL https://b2b-dashboard-hydt.streamlit.app > /dev/null || true
           curl -sL https://b2b-ton-bot.onrender.com > /dev/null || true
           echo "Streamlit dashboard and Render Bot pinged."
