@@ -720,35 +720,81 @@ with tab1:
                 else:
                     st.info("Không có dữ liệu cho biểu đồ nguồn nhập.")
 
-            # Bảng phân bổ sản lượng khách hàng theo từng kho (Đài Tư & Hưng Yên)
+            # Bảng phân bổ sản lượng khách hàng theo từng kho & Chi tiết Tự Lấy (Đài Tư & Hưng Yên)
             if 'ClientName' in df_filtered.columns and 'KhoNhap' in df_filtered.columns and not df_filtered.empty:
                 st.markdown("---")
-                st.subheader(f"👥 Phân Bổ Sản Lượng Khách Hàng Theo Từng Kho (Đài Tư vs Hưng Yên)")
-                st.caption("Tổng hợp sản lượng gửi hàng của từng khách hàng tại kho Đài Tư và kho Hưng Yên trong khoảng thời gian đã lọc.")
+                st.subheader(f"👥 Phân Bổ Sản Lượng Khách Hàng Theo Từng Kho & Tự Lấy (Đài Tư vs Hưng Yên)")
+                st.caption("Tổng hợp sản lượng gửi hàng và hình thức tự lấy của từng khách hàng tại kho Đài Tư và kho Hưng Yên trong khoảng thời gian đã lọc.")
 
                 df_t1_c = df_filtered.copy()
                 df_t1_c['Kho_Clean'] = df_t1_c['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
                 df_t1_c = df_t1_c[df_t1_c['Kho_Clean'].isin(['Đài Tư', 'Hưng Yên'])]
 
                 if not df_t1_c.empty:
+                    is_tl_t1 = df_t1_c['NguonNhap'].str.contains('Tự kho lấy', case=False, na=False) if 'NguonNhap' in df_t1_c.columns else pd.Series(False, index=df_t1_c.index)
+                    df_t1_c['Is_TuLay'] = is_tl_t1
+
                     t1_piv_don = df_t1_c.pivot_table(index='ClientName', columns='Kho_Clean', values='MaDonGoc', aggfunc='nunique', fill_value=0)
                     t1_piv_kg = df_t1_c.pivot_table(index='ClientName', columns='Kho_Clean', values='KhoiLuongKG', aggfunc='sum', fill_value=0)
 
+                    df_t1_tl = df_t1_c[df_t1_c['Is_TuLay']]
+                    t1_piv_tl_don = df_t1_tl.pivot_table(index='ClientName', columns='Kho_Clean', values='MaDonGoc', aggfunc='nunique', fill_value=0) if not df_t1_tl.empty else pd.DataFrame()
+                    t1_piv_tl_kg = df_t1_tl.pivot_table(index='ClientName', columns='Kho_Clean', values='KhoiLuongKG', aggfunc='sum', fill_value=0) if not df_t1_tl.empty else pd.DataFrame()
+
                     t1_res = pd.DataFrame(index=t1_piv_don.index)
-                    t1_res['Đơn Đài Tư'] = t1_piv_don.get('Đài Tư', 0)
-                    t1_res['Đơn Hưng Yên'] = t1_piv_don.get('Hưng Yên', 0)
+                    t1_res['Đơn Đài Tư'] = t1_piv_don['Đài Tư'] if 'Đài Tư' in t1_piv_don.columns else 0
+                    t1_res['Đơn Hưng Yên'] = t1_piv_don['Hưng Yên'] if 'Hưng Yên' in t1_piv_don.columns else 0
                     t1_res['Tổng Đơn'] = t1_res['Đơn Đài Tư'] + t1_res['Đơn Hưng Yên']
-                    t1_res['KG Đài Tư'] = t1_piv_kg.get('Đài Tư', 0)
-                    t1_res['KG Hưng Yên'] = t1_piv_kg.get('Hưng Yên', 0)
+
+                    t1_res['KG Đài Tư'] = t1_piv_kg['Đài Tư'] if 'Đài Tư' in t1_piv_kg.columns else 0
+                    t1_res['KG Hưng Yên'] = t1_piv_kg['Hưng Yên'] if 'Hưng Yên' in t1_piv_kg.columns else 0
                     t1_res['Tổng KG'] = t1_res['KG Đài Tư'] + t1_res['KG Hưng Yên']
+
+                    t1_res['Đơn Tự Lấy Đài Tư'] = t1_piv_tl_don['Đài Tư'].reindex(t1_res.index, fill_value=0) if 'Đài Tư' in t1_piv_tl_don.columns else 0
+                    t1_res['Đơn Tự Lấy Hưng Yên'] = t1_piv_tl_don['Hưng Yên'].reindex(t1_res.index, fill_value=0) if 'Hưng Yên' in t1_piv_tl_don.columns else 0
+                    t1_res['Tổng Đơn Tự Lấy'] = t1_res['Đơn Tự Lấy Đài Tư'] + t1_res['Đơn Tự Lấy Hưng Yên']
+
+                    t1_res['KG Tự Lấy Đài Tư'] = t1_piv_tl_kg['Đài Tư'].reindex(t1_res.index, fill_value=0) if 'Đài Tư' in t1_piv_tl_kg.columns else 0
+                    t1_res['KG Tự Lấy Hưng Yên'] = t1_piv_tl_kg['Hưng Yên'].reindex(t1_res.index, fill_value=0) if 'Hưng Yên' in t1_piv_tl_kg.columns else 0
+                    t1_res['Tổng KG Tự Lấy'] = t1_res['KG Tự Lấy Đài Tư'] + t1_res['KG Tự Lấy Hưng Yên']
+
+                    t1_res['% Tự Lấy'] = np.where(t1_res['Tổng Đơn'] > 0, (t1_res['Tổng Đơn Tự Lấy'] / t1_res['Tổng Đơn'] * 100).round(1), 0.0)
+
                     t1_res['Kho Chủ Lực'] = np.where(t1_res['Đơn Đài Tư'] > t1_res['Đơn Hưng Yên'], 'Đài Tư', np.where(t1_res['Đơn Hưng Yên'] > t1_res['Đơn Đài Tư'], 'Hưng Yên', 'Cả 2 kho'))
+
+                    def classify_tulay_t1(r):
+                        if r['Đơn Tự Lấy Đài Tư'] > 0 and r['Đơn Tự Lấy Hưng Yên'] > 0:
+                            return 'Cả 2 kho tự lấy'
+                        elif r['Đơn Tự Lấy Đài Tư'] > 0:
+                            return 'Đài Tư tự lấy'
+                        elif r['Đơn Tự Lấy Hưng Yên'] > 0:
+                            return 'Hưng Yên tự lấy'
+                        else:
+                            return 'Không tự lấy'
+
+                    t1_res['Kho Tự Lấy'] = t1_res.apply(classify_tulay_t1, axis=1)
                     t1_res = t1_res.reset_index().rename(columns={'ClientName': 'Tên Khách Hàng'})
 
-                    col_t1_f1, col_t1_f2 = st.columns([2, 1])
+                    # KPI Cards cho Tự lấy
+                    t1_kpi1, t1_kpi2, t1_kpi3, t1_kpi4 = st.columns(4)
+                    tot_clients = len(t1_res)
+                    dt_tl_clients = (t1_res['Đơn Tự Lấy Đài Tư'] > 0).sum()
+                    hy_tl_clients = (t1_res['Đơn Tự Lấy Hưng Yên'] > 0).sum()
+                    both_tl_clients = (t1_res['Kho Tự Lấy'] == 'Cả 2 kho tự lấy').sum()
+                    any_tl_clients = (t1_res['Tổng Đơn Tự Lấy'] > 0).sum()
+
+                    t1_kpi1.metric("👥 Tổng KH hoạt động", f"{tot_clients:,.0f} KH")
+                    t1_kpi2.metric("🚚 KH Tự Lấy Đài Tư", f"{dt_tl_clients:,.0f} KH", f"{t1_res['Đơn Tự Lấy Đài Tư'].sum():,.0f} đơn")
+                    t1_kpi3.metric("🚚 KH Tự Lấy Hưng Yên", f"{hy_tl_clients:,.0f} KH", f"{t1_res['Đơn Tự Lấy Hưng Yên'].sum():,.0f} đơn")
+                    t1_kpi4.metric("🔄 Tự Lấy Cả 2 Kho", f"{both_tl_clients:,.0f} KH", f"Tổng {any_tl_clients:,.0f} KH tự lấy")
+
+                    col_t1_f1, col_t1_f2, col_t1_f3 = st.columns([2, 1.2, 1.2])
                     with col_t1_f1:
                         search_t1_client = st.text_input("🔍 Tìm kiếm Tên Khách Hàng:", "", key="search_t1_client_overview")
                     with col_t1_f2:
-                        filter_t1_wh = st.selectbox("Lọc theo kho:", ["Tất cả", "Chỉ gửi Đài Tư", "Chỉ gửi Hưng Yên", "Gửi cả 2 kho"], key="filter_t1_wh_overview")
+                        filter_t1_wh = st.selectbox("🏢 Kho gửi hàng:", ["Tất cả", "Chỉ gửi Đài Tư", "Chỉ gửi Hưng Yên", "Gửi cả 2 kho"], key="filter_t1_wh_overview")
+                    with col_t1_f3:
+                        filter_t1_tl = st.selectbox("🚚 Hình thức Tự Lấy:", ["Tất cả", "Chỉ KH có Tự Lấy", "Tự lấy tại Đài Tư", "Tự lấy tại Hưng Yên", "Tự lấy cả 2 kho", "Không tự lấy"], key="filter_t1_tl_overview")
 
                     df_t1_show = t1_res.copy()
                     if filter_t1_wh == "Chỉ gửi Đài Tư":
@@ -757,6 +803,17 @@ with tab1:
                         df_t1_show = df_t1_show[(df_t1_show['Đơn Hưng Yên'] > 0) & (df_t1_show['Đơn Đài Tư'] == 0)]
                     elif filter_t1_wh == "Gửi cả 2 kho":
                         df_t1_show = df_t1_show[(df_t1_show['Đơn Đài Tư'] > 0) & (df_t1_show['Đơn Hưng Yên'] > 0)]
+
+                    if filter_t1_tl == "Chỉ KH có Tự Lấy":
+                        df_t1_show = df_t1_show[df_t1_show['Tổng Đơn Tự Lấy'] > 0]
+                    elif filter_t1_tl == "Tự lấy tại Đài Tư":
+                        df_t1_show = df_t1_show[df_t1_show['Đơn Tự Lấy Đài Tư'] > 0]
+                    elif filter_t1_tl == "Tự lấy tại Hưng Yên":
+                        df_t1_show = df_t1_show[df_t1_show['Đơn Tự Lấy Hưng Yên'] > 0]
+                    elif filter_t1_tl == "Tự lấy cả 2 kho":
+                        df_t1_show = df_t1_show[df_t1_show['Kho Tự Lấy'] == 'Cả 2 kho tự lấy']
+                    elif filter_t1_tl == "Không tự lấy":
+                        df_t1_show = df_t1_show[df_t1_show['Kho Tự Lấy'] == 'Không tự lấy']
 
                     if search_t1_client.strip():
                         df_t1_show = df_t1_show[df_t1_show['Tên Khách Hàng'].str.contains(search_t1_client.strip(), case=False, na=False)]
@@ -767,9 +824,16 @@ with tab1:
                             'Đơn Đài Tư': '{:,.0f}',
                             'Đơn Hưng Yên': '{:,.0f}',
                             'Tổng Đơn': '{:,.0f}',
+                            'Đơn Tự Lấy Đài Tư': '{:,.0f}',
+                            'Đơn Tự Lấy Hưng Yên': '{:,.0f}',
+                            'Tổng Đơn Tự Lấy': '{:,.0f}',
+                            '% Tự Lấy': '{:.1f}%',
                             'KG Đài Tư': '{:,.0f}',
                             'KG Hưng Yên': '{:,.0f}',
-                            'Tổng KG': '{:,.0f}'
+                            'Tổng KG': '{:,.0f}',
+                            'KG Tự Lấy Đài Tư': '{:,.0f}',
+                            'KG Tự Lấy Hưng Yên': '{:,.0f}',
+                            'Tổng KG Tự Lấy': '{:,.0f}'
                         }),
                         use_container_width=True,
                         hide_index=True
@@ -894,19 +958,70 @@ with tab1:
                     
         col_tbl1, col_tbl2 = st.columns(2)
         with col_tbl1:
-            st.markdown(f"**Chi tiết theo Tên Khách Hàng** *({scope_desc})*")
+            st.markdown(f"**Chi tiết theo Tên Khách Hàng & Tự Lấy** *({scope_desc})*")
             if 'ClientName' in df_wh.columns and 'KhoiLuongKG' in df_wh.columns and 'MaDonGoc' in df_wh.columns and not df_wh.empty:
-                tbl_client = df_wh.groupby('ClientName').agg(
+                is_tl_wh = df_wh['NguonNhap'].str.contains('Tự kho lấy', case=False, na=False) if 'NguonNhap' in df_wh.columns else pd.Series(False, index=df_wh.index)
+                df_wh_w = df_wh.copy()
+                df_wh_w['Is_TL'] = is_tl_wh
+
+                tbl_tot = df_wh_w.groupby('ClientName').agg(
                     Số_đơn=('MaDonGoc', 'nunique'),
                     Tổng_KG=('KhoiLuongKG', 'sum')
-                ).reset_index().sort_values('Số_đơn', ascending=False)
-                tbl_client = tbl_client.rename(columns={
+                )
+                tbl_tl = df_wh_w[df_wh_w['Is_TL']].groupby('ClientName').agg(
+                    Đơn_tự_lấy=('MaDonGoc', 'nunique'),
+                    KG_tự_lấy=('KhoiLuongKG', 'sum')
+                ) if not df_wh_w[df_wh_w['Is_TL']].empty else pd.DataFrame()
+
+                tbl_client = tbl_tot.copy()
+                tbl_client['Đơn_tự_lấy'] = tbl_tl['Đơn_tự_lấy'].reindex(tbl_client.index, fill_value=0) if not tbl_tl.empty and 'Đơn_tự_lấy' in tbl_tl.columns else 0
+                tbl_client['KG_tự_lấy'] = tbl_tl['KG_tự_lấy'].reindex(tbl_client.index, fill_value=0) if not tbl_tl.empty and 'KG_tự_lấy' in tbl_tl.columns else 0
+
+                tbl_client['Đơn nhập khác'] = tbl_client['Số_đơn'] - tbl_client['Đơn_tự_lấy']
+                tbl_client['KG nhập khác'] = tbl_client['Tổng_KG'] - tbl_client['KG_tự_lấy']
+                tbl_client['% Tự lấy'] = np.where(tbl_client['Số_đơn'] > 0, (tbl_client['Đơn_tự_lấy'] / tbl_client['Số_đơn'] * 100).round(1), 0.0)
+
+                tbl_client = tbl_client.reset_index().rename(columns={
                     'ClientName': 'Tên Khách Hàng',
                     'Số_đơn': 'Số đơn',
-                    'Tổng_KG': 'Tổng khối lượng (KG)'
+                    'Đơn_tự_lấy': 'Đơn Tự Lấy',
+                    'Đơn nhập khác': 'Đơn Nhập Khác',
+                    'Tổng_KG': 'Tổng khối lượng (KG)',
+                    'KG_tự_lấy': 'KG Tự Lấy',
+                    'KG nhập khác': 'KG Nhập Khác'
                 })
+
+                f_c1, f_c2 = st.columns([1.5, 1])
+                with f_c1:
+                    filter_tl_wh = st.radio(
+                        f"Nguồn nhận ({wh_name}):",
+                        ["Tất cả KH", "Chỉ KH Tự lấy", "Chỉ KH Nhập khác"],
+                        horizontal=True,
+                        key=f"filter_tbl_tl_{wh_name}"
+                    )
+                with f_c2:
+                    search_client_wh = st.text_input("🔍 Tìm KH:", "", key=f"search_tbl_client_{wh_name}")
+
+                tbl_client_show = tbl_client.copy()
+                if filter_tl_wh == "Chỉ KH Tự lấy":
+                    tbl_client_show = tbl_client_show[tbl_client_show['Đơn Tự Lấy'] > 0]
+                elif filter_tl_wh == "Chỉ KH Nhập khác":
+                    tbl_client_show = tbl_client_show[tbl_client_show['Đơn Nhập Khác'] > 0]
+
+                if search_client_wh.strip():
+                    tbl_client_show = tbl_client_show[tbl_client_show['Tên Khách Hàng'].str.contains(search_client_wh.strip(), case=False, na=False)]
+
+                sort_col_wh = 'Số đơn' if metric_view == 'Số đơn' else 'Tổng khối lượng (KG)'
                 st.dataframe(
-                    tbl_client.style.format({'Số đơn': '{:,.0f}', 'Tổng khối lượng (KG)': '{:,.0f}'}),
+                    tbl_client_show.sort_values(sort_col_wh, ascending=False).style.format({
+                        'Số đơn': '{:,.0f}',
+                        'Đơn Tự Lấy': '{:,.0f}',
+                        'Đơn Nhập Khác': '{:,.0f}',
+                        '% Tự lấy': '{:.1f}%',
+                        'Tổng khối lượng (KG)': '{:,.0f}',
+                        'KG Tự Lấy': '{:,.0f}',
+                        'KG Nhập Khác': '{:,.0f}'
+                    }),
                     use_container_width=True,
                     hide_index=True
                 )
@@ -1351,13 +1466,14 @@ with tab_growth:
             c_stat3.metric("🆕 KH Mới xuất hiện", f"{n_new_c} KH")
             c_stat4.metric("⚠️ KH Tạm ngừng gửi", f"{n_churn} KH")
 
-            client_tab1, client_tab2, client_tab3, client_tab4, client_tab5, client_tab6 = st.tabs([
+            client_tab1, client_tab2, client_tab3, client_tab4, client_tab5, client_tab6, client_tab7 = st.tabs([
                 "🚀 Top KH Tăng trưởng mạnh",
                 "🔻 Top KH Sụt giảm nhiều",
                 "🆕 Danh sách KH Mới",
                 "⚠️ Danh sách KH Tạm ngừng",
                 "📋 Toàn bộ Khách hàng",
-                "🏭 So Sánh KH Giữa 2 Kho (Đài Tư vs Hưng Yên)"
+                "🏭 So Sánh KH Giữa 2 Kho (Đài Tư vs Hưng Yên)",
+                "🚚 Khách Hàng Tự Lấy Theo Kho"
             ])
 
             rename_cols_map = {'ClientName': 'Tên Khách Hàng', 'Kho_gửi': 'Kho Nhập'}
@@ -1575,6 +1691,162 @@ with tab_growth:
                             st.plotly_chart(fig_stacked, use_container_width=True)
                     else:
                         st.info("Không có dữ liệu phân bổ kho cho khách hàng trong kỳ này.")
+
+            with client_tab7:
+                st.markdown(f"#### 🚚 Danh Sách Khách Hàng Tự Lấy Hàng Theo Từng Kho (Kỳ **{latest_period_name}**)")
+                st.caption("Chi tiết khách hàng tự lấy hàng tại Đài Tư, Hưng Yên hoặc cả 2 kho trong kỳ phân tích.")
+
+                if len(all_periods) > 0 and 'NgayNhap' in df_filtered.columns:
+                    p_lat = all_periods[-1]
+                    if g_freq_code == 'D':
+                        df_tl_src = df_filtered[df_filtered['NgayNhap'].dt.to_period('D').dt.start_time == p_lat].copy()
+                    elif g_freq_code == 'W':
+                        df_tl_src = df_filtered[df_filtered['NgayNhap'].dt.to_period('W').dt.start_time == p_lat].copy()
+                    else:
+                        df_tl_src = df_filtered[df_filtered['NgayNhap'].dt.to_period('M').dt.start_time == p_lat].copy()
+                else:
+                    df_tl_src = df_filtered.copy()
+
+                if df_tl_src.empty:
+                    st.info("Không có dữ liệu phát sinh trong kỳ này.")
+                else:
+                    df_tl_src['Kho_Clean'] = df_tl_src['KhoNhap'].apply(lambda x: 'Đài Tư' if 'Đài Tư' in str(x) else ('Hưng Yên' if 'Hưng Yên' in str(x) else 'Khác'))
+                    df_tl_src = df_tl_src[df_tl_src['Kho_Clean'].isin(['Đài Tư', 'Hưng Yên'])]
+
+                    if not df_tl_src.empty:
+                        is_tl_flag = df_tl_src['NguonNhap'].str.contains('Tự kho lấy', case=False, na=False) if 'NguonNhap' in df_tl_src.columns else pd.Series(False, index=df_tl_src.index)
+                        df_tl_src['Is_TuLay'] = is_tl_flag
+
+                        # Total
+                        tl_piv_don_tot = df_tl_src.pivot_table(index='ClientName', columns='Kho_Clean', values='MaDonGoc', aggfunc='nunique', fill_value=0)
+                        tl_piv_kg_tot = df_tl_src.pivot_table(index='ClientName', columns='Kho_Clean', values='KhoiLuongKG', aggfunc='sum', fill_value=0)
+
+                        # Tu lay only
+                        df_tl_only = df_tl_src[df_tl_src['Is_TuLay']]
+                        tl_piv_don_tl = df_tl_only.pivot_table(index='ClientName', columns='Kho_Clean', values='MaDonGoc', aggfunc='nunique', fill_value=0) if not df_tl_only.empty else pd.DataFrame()
+                        tl_piv_kg_tl = df_tl_only.pivot_table(index='ClientName', columns='Kho_Clean', values='KhoiLuongKG', aggfunc='sum', fill_value=0) if not df_tl_only.empty else pd.DataFrame()
+
+                        df_tl_res = pd.DataFrame(index=tl_piv_don_tot.index)
+                        df_tl_res['Đơn Tự Lấy Đài Tư'] = tl_piv_don_tl['Đài Tư'].reindex(df_tl_res.index, fill_value=0) if not tl_piv_don_tl.empty and 'Đài Tư' in tl_piv_don_tl.columns else 0
+                        df_tl_res['Đơn Tự Lấy Hưng Yên'] = tl_piv_don_tl['Hưng Yên'].reindex(df_tl_res.index, fill_value=0) if not tl_piv_don_tl.empty and 'Hưng Yên' in tl_piv_don_tl.columns else 0
+                        df_tl_res['Tổng Đơn Tự Lấy'] = df_tl_res['Đơn Tự Lấy Đài Tư'] + df_tl_res['Đơn Tự Lấy Hưng Yên']
+
+                        df_tl_res['KG Tự Lấy Đài Tư'] = tl_piv_kg_tl['Đài Tư'].reindex(df_tl_res.index, fill_value=0) if not tl_piv_kg_tl.empty and 'Đài Tư' in tl_piv_kg_tl.columns else 0
+                        df_tl_res['KG Tự Lấy Hưng Yên'] = tl_piv_kg_tl['Hưng Yên'].reindex(df_tl_res.index, fill_value=0) if not tl_piv_kg_tl.empty and 'Hưng Yên' in tl_piv_kg_tl.columns else 0
+                        df_tl_res['Tổng KG Tự Lấy'] = df_tl_res['KG Tự Lấy Đài Tư'] + df_tl_res['KG Tự Lấy Hưng Yên']
+
+                        tot_don_all = tl_piv_don_tot['Đài Tư'] if 'Đài Tư' in tl_piv_don_tot.columns else 0
+                        tot_don_all = tot_don_all + (tl_piv_don_tot['Hưng Yên'] if 'Hưng Yên' in tl_piv_don_tot.columns else 0)
+                        df_tl_res['Tổng Đơn Của KH'] = tot_don_all
+                        df_tl_res['% Tự Lấy / Tổng đơn'] = np.where(df_tl_res['Tổng Đơn Của KH'] > 0, (df_tl_res['Tổng Đơn Tự Lấy'] / df_tl_res['Tổng Đơn Của KH'] * 100).round(1), 0.0)
+
+                        def classify_tl_kho(r):
+                            if r['Đơn Tự Lấy Đài Tư'] > 0 and r['Đơn Tự Lấy Hưng Yên'] > 0:
+                                return 'Cả 2 kho tự lấy'
+                            elif r['Đơn Tự Lấy Đài Tư'] > 0:
+                                return 'Đài Tư tự lấy'
+                            elif r['Đơn Tự Lấy Hưng Yên'] > 0:
+                                return 'Hưng Yên tự lấy'
+                            else:
+                                return 'Không tự lấy'
+
+                        df_tl_res['Kho Tự Lấy'] = df_tl_res.apply(classify_tl_kho, axis=1)
+                        df_tl_res = df_tl_res.reset_index().rename(columns={'ClientName': 'Tên Khách Hàng'})
+
+                        # KPI Cards
+                        n_tot_all = len(df_tl_res)
+                        n_tl_active = (df_tl_res['Tổng Đơn Tự Lấy'] > 0).sum()
+                        n_tl_dt = (df_tl_res['Đơn Tự Lấy Đài Tư'] > 0).sum()
+                        n_tl_hy = (df_tl_res['Đơn Tự Lấy Hưng Yên'] > 0).sum()
+                        n_tl_both = (df_tl_res['Kho Tự Lấy'] == 'Cả 2 kho tự lấy').sum()
+
+                        k_tl1, k_tl2, k_tl3, k_tl4 = st.columns(4)
+                        k_tl1.metric("👥 Tổng KH Có Tự Lấy", f"{n_tl_active:,.0f} KH", f"{n_tl_active/n_tot_all*100:.1f}% tổng số KH" if n_tot_all > 0 else "")
+                        k_tl2.metric("🏭 Tự Lấy Tại Đài Tư", f"{n_tl_dt:,.0f} KH", f"{df_tl_res['Đơn Tự Lấy Đài Tư'].sum():,.0f} đơn ({df_tl_res['KG Tự Lấy Đài Tư'].sum():,.0f} kg)")
+                        k_tl3.metric("🏭 Tự Lấy Tại Hưng Yên", f"{n_tl_hy:,.0f} KH", f"{df_tl_res['Đơn Tự Lấy Hưng Yên'].sum():,.0f} đơn ({df_tl_res['KG Tự Lấy Hưng Yên'].sum():,.0f} kg)")
+                        k_tl4.metric("🔄 Tự Lấy Cả 2 Kho", f"{n_tl_both:,.0f} KH")
+
+                        # Filters
+                        f_tl_c1, f_tl_c2, f_tl_c3 = st.columns([2, 2, 2])
+                        with f_tl_c1:
+                            opt_tl_filter = st.selectbox(
+                                "🏢 Nhóm Kho Tự Lấy:",
+                                ["Tất cả KH có tự lấy", "Chỉ tự lấy tại Đài Tư", "Chỉ tự lấy tại Hưng Yên", "Tự lấy cả 2 kho", "Toàn bộ khách hàng (gồm cả không tự lấy)"],
+                                key="opt_tl_filter_tab7"
+                            )
+                        with f_tl_c2:
+                            opt_tl_sort = st.selectbox(
+                                "Sắp xếp theo:",
+                                ["Tổng Đơn Tự Lấy giảm dần", "Tổng KG Tự Lấy giảm dần", "Đơn Tự Lấy Đài Tư giảm dần", "Đơn Tự Lấy Hưng Yên giảm dần", "% Tự Lấy giảm dần"],
+                                key="opt_tl_sort_tab7"
+                            )
+                        with f_tl_c3:
+                            opt_tl_search = st.text_input("🔍 Tìm kiếm Tên KH:", "", placeholder="Nhập tên KH cần tìm...", key="opt_tl_search_tab7")
+
+                        df_tl_view = df_tl_res.copy()
+                        if opt_tl_filter == "Tất cả KH có tự lấy":
+                            df_tl_view = df_tl_view[df_tl_view['Tổng Đơn Tự Lấy'] > 0]
+                        elif opt_tl_filter == "Chỉ tự lấy tại Đài Tư":
+                            df_tl_view = df_tl_view[(df_tl_view['Đơn Tự Lấy Đài Tư'] > 0) & (df_tl_view['Đơn Tự Lấy Hưng Yên'] == 0)]
+                        elif opt_tl_filter == "Chỉ tự lấy tại Hưng Yên":
+                            df_tl_view = df_tl_view[(df_tl_view['Đơn Tự Lấy Hưng Yên'] > 0) & (df_tl_view['Đơn Tự Lấy Đài Tư'] == 0)]
+                        elif opt_tl_filter == "Tự lấy cả 2 kho":
+                            df_tl_view = df_tl_view[df_tl_view['Kho Tự Lấy'] == 'Cả 2 kho tự lấy']
+
+                        if opt_tl_search.strip():
+                            df_tl_view = df_tl_view[df_tl_view['Tên Khách Hàng'].str.contains(opt_tl_search.strip(), case=False, na=False)]
+
+                        sort_tl_map = {
+                            "Tổng Đơn Tự Lấy giảm dần": ('Tổng Đơn Tự Lấy', False),
+                            "Tổng KG Tự Lấy giảm dần": ('Tổng KG Tự Lấy', False),
+                            "Đơn Tự Lấy Đài Tư giảm dần": ('Đơn Tự Lấy Đài Tư', False),
+                            "Đơn Tự Lấy Hưng Yên giảm dần": ('Đơn Tự Lấy Hưng Yên', False),
+                            "% Tự Lấy giảm dần": ('% Tự Lấy / Tổng đơn', False),
+                        }
+                        tl_s_col, tl_s_asc = sort_tl_map[opt_tl_sort]
+                        df_tl_view = df_tl_view.sort_values(tl_s_col, ascending=tl_s_asc)
+
+                        st.dataframe(
+                            df_tl_view.style.format({
+                                'Đơn Tự Lấy Đài Tư': '{:,.0f}',
+                                'Đơn Tự Lấy Hưng Yên': '{:,.0f}',
+                                'Tổng Đơn Tự Lấy': '{:,.0f}',
+                                'KG Tự Lấy Đài Tư': '{:,.0f}',
+                                'KG Tự Lấy Hưng Yên': '{:,.0f}',
+                                'Tổng KG Tự Lấy': '{:,.0f}',
+                                'Tổng Đơn Của KH': '{:,.0f}',
+                                '% Tự Lấy / Tổng đơn': '{:.1f}%'
+                            }),
+                            use_container_width=True,
+                            hide_index=True
+                        )
+
+                        # Biểu đồ Top 15 KH Tự Lấy
+                        top15_tl = df_tl_view[df_tl_view['Tổng Đơn Tự Lấy'] > 0].head(15).copy()
+                        if not top15_tl.empty:
+                            st.markdown(f"**Biểu đồ phân bổ Top 15 KH có lượng tự lấy lớn nhất (Đài Tư vs Hưng Yên):**")
+                            tl_metric_chart = 'Số đơn' if client_metric == 'Số đơn' else 'Khối lượng (kg)'
+                            if client_metric == 'Số đơn':
+                                df_plot_tl = top15_tl.melt(id_vars=['Tên Khách Hàng'], value_vars=['Đơn Tự Lấy Đài Tư', 'Đơn Tự Lấy Hưng Yên'], var_name='Kho', value_name='Sản lượng')
+                                df_plot_tl['Kho'] = df_plot_tl['Kho'].str.replace('Đơn Tự Lấy ', '')
+                            else:
+                                df_plot_tl = top15_tl.melt(id_vars=['Tên Khách Hàng'], value_vars=['KG Tự Lấy Đài Tư', 'KG Tự Lấy Hưng Yên'], var_name='Kho', value_name='Sản lượng')
+                                df_plot_tl['Kho'] = df_plot_tl['Kho'].str.replace('KG Tự Lấy ', '')
+
+                            fig_tl_bar = px.bar(
+                                df_plot_tl,
+                                x='Sản lượng',
+                                y='Tên Khách Hàng',
+                                color='Kho',
+                                orientation='h',
+                                title=f"Top 15 KH Tự Lấy theo {tl_metric_chart.lower()} tại Đài Tư & Hưng Yên",
+                                color_discrete_map={'Đài Tư': '#004b8b', 'Hưng Yên': '#ff7f0e'},
+                                text_auto='.2s'
+                            )
+                            fig_tl_bar.update_layout(yaxis=dict(autorange="reversed"), barmode='stack', xaxis_title=f"{tl_metric_chart} tự lấy")
+                            st.plotly_chart(fig_tl_bar, use_container_width=True)
+                    else:
+                        st.info("Không có dữ liệu kho hợp lệ để phân tích tự lấy.")
         else:
             st.info("Cần ít nhất 2 kỳ thời gian để so sánh biến động khách hàng.")
 
