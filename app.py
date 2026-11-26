@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import os
 import requests
@@ -1938,8 +1939,7 @@ with tab_growth:
 # ==================== TAB 3: ONTIME XUẤT HÀNG ====================
 with tab2:
     st.header("BÁO CÁO ONTIME XUẤT HÀNG")
-    
-    import numpy as np
+
     df_ot = df_filtered.copy()
     if 'NgayNhap' in df_ot.columns:
         today_date = pd.to_datetime('today').normalize()
